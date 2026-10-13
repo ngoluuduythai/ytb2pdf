@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/ytb2pdf-core",
+    "crates/ytb2pdf-cli",
+    "crates/ytb2pdf-app",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Daisy <daisy@example.com>"]
