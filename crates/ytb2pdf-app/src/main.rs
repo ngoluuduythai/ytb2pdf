@@ -20,7 +20,7 @@ struct App {
     url: String,
     translate: bool,
     target_lang: String,
-    cookies_browser: String,
+    cookies_file: Option<PathBuf>,
     running: bool,
     stage: String,
     progress: Option<(usize, usize)>,
@@ -37,7 +37,7 @@ impl App {
             url: String::new(),
             translate: true,
             target_lang: "vi".to_string(),
-            cookies_browser: String::new(),
+            cookies_file: None,
             running: false,
             stage: "Nhập link YouTube rồi bấm Tạo PDF".to_string(),
             progress: None,
@@ -68,8 +68,7 @@ impl App {
         let mut cfg = PipelineConfig::default();
         cfg.url = url;
         cfg.target_lang = self.translate.then(|| self.target_lang.trim().to_string()).filter(|s| !s.is_empty());
-        cfg.cookies_from_browser = (!self.cookies_browser.trim().is_empty())
-            .then(|| self.cookies_browser.trim().to_string());
+        cfg.cookies_file = self.cookies_file.clone();
         let video_id = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
             .map(|v| v.id)
             .unwrap_or_else(|_| "video".to_string());
@@ -196,14 +195,26 @@ impl eframe::App for App {
                     !self.running && self.translate,
                     egui::TextEdit::singleline(&mut self.target_lang).desired_width(40.0),
                 );
-                ui.label("Cookie từ browser (chống 403):");
-                ui.add_enabled(
-                    !self.running,
-                    egui::TextEdit::singleline(&mut self.cookies_browser)
-                        .hint_text("chrome / firefox / để trống")
-                        .desired_width(150.0),
+                ui.label("File cookie (chống 403/429):");
+                if ui
+                    .add_enabled(!self.running, egui::Button::new("Chọn cookies.txt…"))
+                    .clicked()
+                {
+                    if let Some(p) = rfd::FileDialog::new()
+                        .add_filter("cookies.txt", &["txt"])
+                        .pick_file()
+                    {
+                        self.cookies_file = Some(p);
+                    }
+                }
+                ui.monospace(
+                    self.cookies_file
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "(không bắt buộc)".to_string()),
                 );
             });
+            ui.label("Xuất file bằng extension Get cookies.txt LOCALLY khi đang mở youtube.com");
 
             ui.add_space(8.0);
             let btn = ui.add_enabled(
