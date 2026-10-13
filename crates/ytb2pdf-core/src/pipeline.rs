@@ -59,7 +59,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
 
     let ytdlp = YtDlp {
         cookies_from_browser: cfg.cookies_from_browser.clone(),
-        retries: 3,
+        retries: 5,
     };
 
     emit(PipelineEvent::Stage("Lấy thông tin video"));
@@ -74,7 +74,13 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     std::fs::create_dir_all(&frame_dir)?;
 
     emit(PipelineEvent::Stage("Tải caption"));
-    let sub_file = ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir)?;
+    let sub_file = ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir).map_err(|e| {
+        anyhow::anyhow!(
+            "{e}\n\nGợi ý: YouTube đang giới hạn IP này (429/403). Hãy điền cookie từ browser \
+             vào ô \"Cookie từ browser\" (vd: chrome) — request kèm session đăng nhập thường \
+             thoát được giới hạn này — rồi bấm Tạo PDF lại. Hoặc đợi vài phút cho hết throttle."
+        )
+    })?;
     log(format!("Caption: {}", sub_file.display()));
 
     emit(PipelineEvent::Stage("Chuẩn hoá caption"));
