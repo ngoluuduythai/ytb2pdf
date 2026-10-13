@@ -31,6 +31,17 @@ pub struct GeminiTranslator {
 }
 
 impl GeminiTranslator {
+    /// Explicit key (e.g. typed into the GUI). Falls back to `GEMINI_MODEL` env for the model.
+    pub fn new(api_key: &str) -> Self {
+        let model =
+            std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.5-flash-lite".to_string());
+        Self {
+            api_key: api_key.to_string(),
+            model,
+            batch_size: 20,
+        }
+    }
+
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("GEMINI_API_KEY")
             .map_err(|_| anyhow!("GEMINI_API_KEY is not set"))?;
