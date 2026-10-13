@@ -18,7 +18,10 @@ pub struct PipelineConfig {
     pub source_lang: String,
     /// Translate captions into this language, e.g. `Some("vi")`. `None` = keep original.
     pub target_lang: Option<String>,
-    /// Passed to yt-dlp as `--cookies-from-browser` (anti-403).
+    /// Cookie file (Netscape format) passed to yt-dlp as `--cookies` (anti-403/429).
+    pub cookies_file: Option<PathBuf>,
+    /// Passed to yt-dlp as `--cookies-from-browser` (anti-403). Used only
+    /// when `cookies_file` is not set.
     pub cookies_from_browser: Option<String>,
     /// Scratch dir for video / subtitles / frames.
     pub work_dir: PathBuf,
@@ -34,6 +37,7 @@ impl Default for PipelineConfig {
             url: String::new(),
             source_lang: "en".to_string(),
             target_lang: None,
+            cookies_file: None,
             cookies_from_browser: None,
             work_dir: PathBuf::from("ytb2pdf-work"),
             out_pdf: PathBuf::from("output.pdf"),
@@ -57,7 +61,14 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     let video = youtube::parse_youtube_url(&cfg.url)?;
     log(format!("Video id: {}", video.id));
 
+    if let Some(f) = &cfg.cookies_file {
+        if !f.exists() {
+            anyhow::bail!("không tìm thấy file cookie: {}", f.display());
+        }
+    }
+
     let ytdlp = YtDlp {
+        cookies_file: cfg.cookies_file.clone(),
         cookies_from_browser: cfg.cookies_from_browser.clone(),
         retries: 5,
     };
