@@ -8,4 +8,5 @@ description = "Native desktop app (egui) for the YouTube -> PDF pipeline"
 [dependencies]
 anyhow = "1"
 eframe = "0.32"
+rfd = "0.15"
 ytb2pdf-core = { path = "../ytb2pdf-core" }
