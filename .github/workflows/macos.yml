@@ -65,7 +65,7 @@ jobs:
           curl -sSL -o "$BIN/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
           chmod +x "$BIN/yt-dlp"
           # ffmpeg: static arm64 build shipped in the imageio-ffmpeg wheel
-          pip3 install --quiet imageio-ffmpeg
+          pip3 install --quiet --break-system-packages imageio-ffmpeg
           cp "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$BIN/ffmpeg"
           chmod +x "$BIN/ffmpeg"
           "$BIN/yt-dlp" --version
