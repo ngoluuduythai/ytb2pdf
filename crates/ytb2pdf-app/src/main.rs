@@ -9,7 +9,7 @@ mod theme;
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use ytb2pdf_core::{run_pipeline, PipelineConfig, PipelineEvent};
+use ytb2pdf_core::{run_pipeline, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 enum UiMsg {
     Stage(String),
@@ -24,6 +24,7 @@ struct App {
     translate: bool,
     target_lang: String,
     gemini_api_key: String,
+    whisper_model: WhisperModel,
     cookies_file: Option<PathBuf>,
     running: bool,
     stage: String,
@@ -43,6 +44,7 @@ impl App {
             translate: true,
             target_lang: "vi".to_string(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
+            whisper_model: WhisperModel::default(),
             cookies_file: None,
             running: false,
             stage: "Sẵn sàng".to_string(),
@@ -79,6 +81,7 @@ impl App {
             .filter(|s| !s.is_empty());
         cfg.gemini_api_key =
             (!self.gemini_api_key.trim().is_empty()).then(|| self.gemini_api_key.trim().to_string());
+        cfg.whisper_model = self.whisper_model;
         cfg.cookies_file = self.cookies_file.clone();
         let video_id = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
             .map(|v| v.id)
@@ -268,6 +271,34 @@ impl eframe::App for App {
                         );
                         ui.label(
                             egui::RichText::new("chỉ lưu trong phiên chạy")
+                                .small()
+                                .color(theme::TEXT_FAINT),
+                        );
+                    });
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new("Whisper").color(theme::TEXT_DIM));
+                    ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("whisper_model")
+                            .selected_text(format!(
+                                "{} ({})",
+                                self.whisper_model.label(),
+                                self.whisper_model.size_hint()
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.whisper_model,
+                                    WhisperModel::Fast,
+                                    "Nhanh (tiny, ~75 MB)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.whisper_model,
+                                    WhisperModel::Medium,
+                                    "Cân bằng (base, ~147 MB)",
+                                );
+                            });
+                        ui.label(
+                            egui::RichText::new("model tải 1 lần khi video không có caption")
                                 .small()
                                 .color(theme::TEXT_FAINT),
                         );
