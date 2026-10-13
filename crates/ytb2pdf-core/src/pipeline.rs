@@ -25,6 +25,10 @@ pub struct PipelineConfig {
     pub cookies_file: Option<PathBuf>,
     /// Whisper model used when the video has no YouTube captions.
     pub whisper_model: whisper::WhisperModel,
+    /// User-supplied transcript (.srt/.vtt). When set, YouTube caption
+    /// download AND the Whisper fallback are both skipped — the file is
+    /// used directly as the caption segments.
+    pub transcript_file: Option<PathBuf>,
     /// Passed to yt-dlp as `--cookies-from-browser` (anti-403). Used only
     /// when `cookies_file` is not set.
     pub cookies_from_browser: Option<String>,
@@ -44,6 +48,7 @@ impl Default for PipelineConfig {
             target_lang: None,
             gemini_api_key: None,
             whisper_model: whisper::WhisperModel::default(),
+            transcript_file: None,
             cookies_file: None,
             cookies_from_browser: None,
             work_dir: PathBuf::from("ytb2pdf-work"),
@@ -98,15 +103,22 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     std::fs::create_dir_all(&frame_dir)?;
 
     emit(PipelineEvent::Stage("Tải caption"));
-    let segments: Vec<Segment> =
+    let segments: Vec<Segment> = if let Some(srt_path) = &cfg.transcript_file {
+        log(format!(
+            "Dùng transcript do người dùng cung cấp: {} — bỏ qua caption YouTube và Whisper",
+            srt_path.display()
+        ));
+        emit(PipelineEvent::Stage("Chuẩn hoá caption"));
+        subtitles::load_subtitles_file(srt_path)?
+    } else {
         match ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir) {
             Ok(sub_file) => {
                 log(format!("Caption: {}", sub_file.display()));
                 emit(PipelineEvent::Stage("Chuẩn hoá caption"));
                 subtitles::load_subtitles_file(&sub_file)?
             }
-            // No captions on YouTube at all -> Whisper fallback (mini-youglish style):
-            // download the audio track and transcribe locally with mlx-whisper.
+            // No captions on YouTube at all -> Whisper fallback:
+            // download the audio track and transcribe locally with whisper.cpp.
             Err(e) if e.to_string().contains("no subtitles found") => {
                 log("Video không có caption YouTube — chuyển sang Whisper".to_string());
                 emit(PipelineEvent::Stage("Tải audio"));
@@ -133,7 +145,8 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
                      đăng nhập thường thoát được giới hạn IP."
                 ))
             }
-        };
+        }
+    };
     log(format!("{} đoạn caption", segments.len()));
 
     // ---- translation (optional) ----
