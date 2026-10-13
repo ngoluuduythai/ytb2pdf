@@ -59,9 +59,13 @@ pub struct VideoMeta {
 /// Thin wrapper around the `yt-dlp` binary.
 #[derive(Debug, Clone, Default)]
 pub struct YtDlp {
+    /// Path to a Netscape-format cookies.txt file (e.g. exported from the
+    /// "Get cookies.txt LOCALLY" extension while on youtube.com).
+    /// Preferred over `cookies_from_browser`: narrower scope, no browser
+    /// profile permission needed. Passed as `--cookies <file>`.
+    pub cookies_file: Option<PathBuf>,
     /// e.g. `Some("chrome")` — passes `--cookies-from-browser chrome`.
-    /// This is the single most effective fix for HTTP 403 / "Sign in to
-    /// confirm you're not a bot" on residential IPs.
+    /// Fallback when no cookie file is given.
     pub cookies_from_browser: Option<String>,
     /// Extra seconds of backoff is handled by yt-dlp itself (`--retries`).
     pub retries: u32,
@@ -70,6 +74,7 @@ pub struct YtDlp {
 impl YtDlp {
     pub fn new() -> Self {
         Self {
+            cookies_file: None,
             cookies_from_browser: None,
             retries: 5,
         }
@@ -78,7 +83,9 @@ impl YtDlp {
     fn base_cmd(&self) -> Command {
         let mut cmd = Command::new("yt-dlp");
         cmd.arg("--no-warnings");
-        if let Some(browser) = &self.cookies_from_browser {
+        if let Some(f) = &self.cookies_file {
+            cmd.arg("--cookies").arg(f);
+        } else if let Some(browser) = &self.cookies_from_browser {
             cmd.arg("--cookies-from-browser").arg(browser);
         }
         cmd.arg("--retries").arg(self.retries.to_string());
