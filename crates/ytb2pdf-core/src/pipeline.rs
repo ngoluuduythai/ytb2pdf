@@ -7,6 +7,7 @@ use crate::frames::{capture_frames, dedupe_frames};
 use crate::pdf::{self, PdfBlock, PdfMeta, PdfOptions};
 use crate::subtitles::{self, Segment};
 use crate::translate::{GeminiTranslator, NoopTranslator, Translator};
+use crate::whisper;
 use crate::youtube::{self, YtDlp};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -94,20 +95,38 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     std::fs::create_dir_all(&frame_dir)?;
 
     emit(PipelineEvent::Stage("Tải caption"));
-    let sub_file = ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir).map_err(|e| {
-        anyhow::anyhow!(
-            "{e}\n\nGợi ý: nếu là lỗi 429/403/bot-check, hãy bấm \"Chọn cookies.txt\" \
-             (export khi đang mở youtube.com) rồi bấm Tạo PDF lại — request kèm session \
-             đăng nhập thường thoát được giới hạn IP. Nếu báo không có caption, video này \
-             có thể không có phụ đề tiếng {sl}: kiểm tra bằng lệnh \
-             yt-dlp --list-subs --skip-download \"URL\".",
-            sl = cfg.source_lang
-        )
-    })?;
-    log(format!("Caption: {}", sub_file.display()));
-
-    emit(PipelineEvent::Stage("Chuẩn hoá caption"));
-    let segments: Vec<Segment> = subtitles::load_subtitles_file(&sub_file)?;
+    let segments: Vec<Segment> =
+        match ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir) {
+            Ok(sub_file) => {
+                log(format!("Caption: {}", sub_file.display()));
+                emit(PipelineEvent::Stage("Chuẩn hoá caption"));
+                subtitles::load_subtitles_file(&sub_file)?
+            }
+            // No captions on YouTube at all -> Whisper fallback (mini-youglish style):
+            // download the audio track and transcribe locally with mlx-whisper.
+            Err(e) if e.to_string().contains("no subtitles found") => {
+                log("Video không có caption YouTube — chuyển sang Whisper".to_string());
+                emit(PipelineEvent::Stage("Tải audio"));
+                let audio_path = cfg.work_dir.join(format!("{}.m4a", video.id));
+                ytdlp.download_audio(&video, &audio_path)?;
+                log(format!("Audio: {}", audio_path.display()));
+                emit(PipelineEvent::Stage("Nhận dạng giọng nói (Whisper)"));
+                log("Đang chạy mlx-whisper trên Apple Silicon, có thể mất vài phút…".to_string());
+                whisper::transcribe_audio(
+                    &audio_path,
+                    &cfg.work_dir,
+                    whisper::DEFAULT_MODEL,
+                    &cfg.source_lang,
+                )?
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "{e}\n\nGợi ý: nếu là lỗi 429/403/bot-check, hãy bấm \"Chọn cookies.txt\" \
+                     (export khi đang mở youtube.com) rồi bấm Tạo PDF lại — request kèm session \
+                     đăng nhập thường thoát được giới hạn IP."
+                ))
+            }
+        };
     log(format!("{} đoạn caption", segments.len()));
 
     // ---- translation (optional) ----
