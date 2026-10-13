@@ -17,6 +17,7 @@ pub mod pdf;
 pub mod pipeline;
 pub mod subtitles;
 pub mod translate;
+pub mod whisper;
 pub mod youtube;
 
 pub use pipeline::{run_pipeline, PipelineConfig, PipelineEvent};
