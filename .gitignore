@@ -1,0 +1,4 @@
+/target
+ytb2pdf-work/
+*.pdf
+.DS_Store
