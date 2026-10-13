@@ -9,10 +9,10 @@
 
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
-use ytb2pdf_core::{run_pipeline, PipelineConfig, PipelineEvent};
+use ytb2pdf_core::{run_pipeline, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -49,6 +49,11 @@ fn main() -> Result<()> {
             }
             "--gemini-key" => {
                 cfg.gemini_api_key = Some(flag(i + 1)?);
+                i += 2;
+            }
+            "--whisper-model" => {
+                cfg.whisper_model = WhisperModel::from_name(&flag(i + 1)?)
+                    .ok_or_else(|| anyhow!("--whisper-model must be fast|medium"))?;
                 i += 2;
             }
             "--work-dir" => {
