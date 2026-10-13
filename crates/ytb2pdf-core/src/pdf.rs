@@ -11,9 +11,17 @@
 
 use anyhow::{anyhow, Context, Result};
 use genpdf::elements::{Break, Image, PageBreak, Paragraph};
+use genpdf::render::Area;
 use genpdf::style::{Style, StyledString};
-use genpdf::{Alignment, Document, Margins, SimplePageDecorator};
+use genpdf::{
+    Alignment, Context as GenContext, Document, Element, Margins, Mm, Position, RenderResult,
+    SimplePageDecorator, Size,
+};
 use std::path::{Path, PathBuf};
+
+/// Page content height in mm: A4 (297) minus the decorator margins below.
+/// Keep in sync with the `Margins::trbl` call in [`build_pdf`].
+const PAGE_CONTENT_H_MM: f64 = 297.0 - 18.0 - 18.0;
 
 pub struct PdfMeta {
     pub title: String,
@@ -214,6 +222,76 @@ fn para(text: &str, style: &Style) -> Paragraph {
     Paragraph::new(StyledString::new(text, style.clone()))
 }
 
+/// Timestamp heading + frame image as one unbreakable unit.
+///
+/// Background: genpdf's `Image` paints itself even when it does not fit the
+/// remaining page area (it always reports `has_more = false`), so a frame
+/// near the bottom of a page gets drawn past the page edge — the viewer
+/// clips it and the lower half of the picture is silently lost. This
+/// wrapper measures first: if the heading+image pair does not fit in what
+/// is left of the page, it draws nothing and asks for a fresh page, so the
+/// pair is never torn at a page boundary.
+struct BlockHead {
+    head: Paragraph,
+    head_style: Style,
+    image: Image,
+    /// Rendered image height (genpdf draws at 300 dpi by default) + margin.
+    image_h: Mm,
+}
+
+impl BlockHead {
+    fn new(head: Paragraph, head_style: Style, image: Image, image_h: Mm) -> Self {
+        Self {
+            head,
+            head_style,
+            image,
+            image_h,
+        }
+    }
+}
+
+impl Element for BlockHead {
+    fn render(
+        &mut self,
+        context: &GenContext,
+        mut area: Area<'_>,
+        style: Style,
+    ) -> Result<RenderResult, genpdf::error::Error> {
+        // Single-line heading height, with a safety margin so the fit check
+        // below stays conservative (overestimating only costs whitespace).
+        let head_h = self.head_style.line_height(&context.font_cache) + Mm::from(2.0);
+        let total_h = head_h + self.image_h;
+        let remaining_h = area.size().height;
+        // Fresh page (allowing float noise): always draw. Otherwise, if the
+        // pair doesn't fit in what's left, draw nothing and take a new page —
+        // the pair is re-rendered there from scratch.
+        if total_h > remaining_h && remaining_h < Mm::from(PAGE_CONTENT_H_MM - 1.0) {
+            return Ok(RenderResult {
+                size: Size::new(0, 0),
+                has_more: true,
+            });
+        }
+        let head_res = self.head.render(context, area.clone(), style)?;
+        if head_res.has_more {
+            return Ok(head_res);
+        }
+        area.add_offset(Position::new(0, head_res.size.height));
+        let img_res = self.image.render(context, area, style)?;
+        Ok(RenderResult {
+            size: head_res.size.stack_vertical(img_res.size),
+            has_more: img_res.has_more,
+        })
+    }
+}
+
+/// Rendered height of an image in mm, the way genpdf will draw it
+/// (default 300 dpi, scale 1.0), plus a small safety margin.
+fn image_height_mm(path: &Path) -> Mm {
+    image::image_dimensions(path)
+        .map(|(_, h)| Mm::from(h as f64 / 300.0 * 25.4 + 2.0))
+        .unwrap_or(Mm::from(62.0))
+}
+
 pub fn build_pdf(
     meta: &PdfMeta,
     blocks: &[PdfBlock],
@@ -255,13 +333,23 @@ pub fn build_pdf(
     for b in blocks {
         let mut head = para(&format!("[{}]", format_timestamp(b.timestamp_secs)), &ts_style);
         head.set_alignment(Alignment::Left);
-        doc.push(head);
 
-        if let Some(img_path) = &b.image {
-            match Image::from_path(img_path) {
-                Ok(img) => doc.push(img.with_alignment(Alignment::Center)),
-                Err(e) => doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &dim_style)),
-            }
+        match &b.image {
+            Some(img_path) => match Image::from_path(img_path) {
+                // Heading + image travel as one unbreakable unit so a frame
+                // is never torn across a page boundary.
+                Ok(img) => doc.push(BlockHead::new(
+                    head,
+                    ts_style.clone(),
+                    img.with_alignment(Alignment::Center),
+                    image_height_mm(img_path),
+                )),
+                Err(e) => {
+                    doc.push(head);
+                    doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &dim_style));
+                }
+            },
+            None => doc.push(head),
         }
 
         doc.push(para(&b.caption, &body_style));
