@@ -18,6 +18,8 @@ pub struct PipelineConfig {
     pub source_lang: String,
     /// Translate captions into this language, e.g. `Some("vi")`. `None` = keep original.
     pub target_lang: Option<String>,
+    /// Gemini API key for translation. If `None`, falls back to `GEMINI_API_KEY` env var.
+    pub gemini_api_key: Option<String>,
     /// Cookie file (Netscape format) passed to yt-dlp as `--cookies` (anti-403/429).
     pub cookies_file: Option<PathBuf>,
     /// Passed to yt-dlp as `--cookies-from-browser` (anti-403). Used only
@@ -37,6 +39,7 @@ impl Default for PipelineConfig {
             url: String::new(),
             source_lang: "en".to_string(),
             target_lang: None,
+            gemini_api_key: None,
             cookies_file: None,
             cookies_from_browser: None,
             work_dir: PathBuf::from("ytb2pdf-work"),
@@ -102,12 +105,15 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     let translated: Vec<Option<String>> = match &cfg.target_lang {
         Some(target) if target != &cfg.source_lang => {
             emit(PipelineEvent::Stage("Dịch caption"));
-            let translator: Box<dyn Translator> = match GeminiTranslator::from_env() {
-                Ok(g) => Box::new(g),
-                Err(e) => {
-                    log(format!("Cảnh báo: {e} - bỏ qua bước dịch, giữ caption gốc"));
-                    Box::new(NoopTranslator)
-                }
+            let translator: Box<dyn Translator> = match &cfg.gemini_api_key {
+                Some(k) if !k.trim().is_empty() => Box::new(GeminiTranslator::new(k.trim())),
+                _ => match GeminiTranslator::from_env() {
+                    Ok(g) => Box::new(g),
+                    Err(e) => {
+                        log(format!("Cảnh báo: {e} - bỏ qua bước dịch, giữ caption gốc"));
+                        Box::new(NoopTranslator)
+                    }
+                },
             };
             let src: Vec<String> = segments.iter().map(|s| s.text.clone()).collect();
             let total = src.len();
