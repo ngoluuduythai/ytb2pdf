@@ -166,6 +166,24 @@ impl YtDlp {
         })
     }
 
+    /// Download the audio track (m4a) — used by the Whisper fallback when
+    /// the video has no captions.
+    pub fn download_audio(&self, video: &VideoRef, out_path: &Path) -> Result<PathBuf> {
+        let mut cmd = self.base_cmd();
+        cmd.arg("--no-playlist")
+            .arg("-f")
+            .arg("bestaudio[ext=m4a]/bestaudio/best")
+            .arg("--output")
+            .arg(out_path)
+            .arg(&video.url);
+        self.run(cmd, "downloading audio")?;
+        if out_path.exists() {
+            Ok(out_path.to_path_buf())
+        } else {
+            Err(anyhow!("yt-dlp finished but the audio file is missing"))
+        }
+    }
+
     /// Download a subtitle file. Tries manual subtitles first, then
     /// auto-generated captions. Returns the path of the downloaded file.
     pub fn download_subtitles(
