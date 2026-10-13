@@ -70,6 +70,16 @@ fn font_names(preferred: &str) -> Vec<String> {
     names
 }
 
+/// Raw bytes of the bundled Be Vietnam Pro faces, for UIs that want the
+/// same typeface on screen (the PDF renderer embeds these too).
+/// Returns `(regular, bold)`.
+pub fn bundled_ui_font() -> (&'static [u8], &'static [u8]) {
+    (
+        include_bytes!("../fonts/BeVietnamPro-Regular.ttf"),
+        include_bytes!("../fonts/BeVietnamPro-Bold.ttf"),
+    )
+}
+
 /// Be Vietnam Pro, bundled in `fonts/` (OFL 1.1 — free to embed).
 /// Loaded with `include_bytes!` so the binary works on any machine with
 /// zero font setup (CI runners, fresh Macs, …).
