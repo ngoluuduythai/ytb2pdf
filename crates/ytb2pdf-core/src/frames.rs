@@ -34,7 +34,7 @@ pub fn extract_frame(video: &Path, at_secs: f64, out: &Path) -> Result<()> {
         .arg("5")
         .arg(out)
         .status()
-        .context("failed to run `ffmpeg` — is it installed and on PATH?")?;
+        .context("failed to run `ffmpeg` — install it with `brew install ffmpeg`")?;
     if !st.success() || !out.exists() {
         anyhow::bail!("ffmpeg could not extract a frame at {at_secs:.1}s");
     }
