@@ -387,7 +387,25 @@ impl eframe::App for App {
     }
 }
 
+/// The .dmg ships `yt-dlp` + `ffmpeg` inside the .app bundle
+/// (`Contents/Resources/bin/`). Put that dir on PATH so the pipeline's
+/// child processes find them without any Homebrew install.
+fn ensure_bundled_tools_on_path() {
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
+        .map(|macos_dir| macos_dir.join("../Resources/bin"));
+    if let Some(bin) = bin {
+        if bin.join("yt-dlp").exists() || bin.join("ffmpeg").exists() {
+            let bin = std::fs::canonicalize(&bin).unwrap_or(bin);
+            let path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{}:{path}", bin.display()));
+        }
+    }
+}
+
 fn main() -> eframe::Result<()> {
+    ensure_bundled_tools_on_path();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([700.0, 680.0]),
         ..Default::default()
