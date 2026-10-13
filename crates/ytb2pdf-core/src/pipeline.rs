@@ -77,7 +77,13 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     };
 
     emit(PipelineEvent::Stage("Lấy thông tin video"));
-    let meta = ytdlp.metadata(&video)?;
+    let meta = ytdlp.metadata(&video).map_err(|e| {
+        anyhow::anyhow!(
+            "{e}\n\nGợi ý: đây là bot-check của YouTube với IP này. Hãy chọn file cookies.txt \
+             (ô \"Cookie\" trong app, export khi đang mở youtube.com) rồi thử lại; \
+             app đã tự thử không dùng web player client. Nếu vẫn lỗi, đợi một lúc cho hết throttle."
+        )
+    })?;
     log(format!("\"{}\" - {} ({})", meta.title, meta.uploader,
         pdf::format_duration(meta.duration_secs)));
 
