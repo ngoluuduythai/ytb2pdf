@@ -71,7 +71,7 @@ impl YtDlp {
     pub fn new() -> Self {
         Self {
             cookies_from_browser: None,
-            retries: 3,
+            retries: 5,
         }
     }
 
@@ -82,6 +82,9 @@ impl YtDlp {
             cmd.arg("--cookies-from-browser").arg(browser);
         }
         cmd.arg("--retries").arg(self.retries.to_string());
+        // Back off on HTTP errors (429/5xx): wait 10s between retries so
+        // YouTube's per-IP throttle has time to cool down.
+        cmd.arg("--retry-sleep").arg("http:10");
         cmd
     }
 
