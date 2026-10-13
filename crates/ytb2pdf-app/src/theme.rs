@@ -56,16 +56,16 @@ pub fn apply(ctx: &egui::Context) {
     }
     ctx.set_visuals(v);
     ctx.style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.button_padding = egui::vec2(12.0, 6.0);
-        s.text_styles.insert(TextStyle::Body, FontId::new(13.0, FontFamily::Proportional));
+        s.spacing.item_spacing = egui::vec2(10.0, 8.0);
+        s.spacing.button_padding = egui::vec2(14.0, 8.0);
+        s.text_styles.insert(TextStyle::Body, FontId::new(15.0, FontFamily::Proportional));
         s.text_styles
-            .insert(TextStyle::Button, FontId::new(13.0, FontFamily::Proportional));
-        s.text_styles.insert(TextStyle::Small, FontId::new(11.0, FontFamily::Proportional));
+            .insert(TextStyle::Button, FontId::new(15.0, FontFamily::Proportional));
+        s.text_styles.insert(TextStyle::Small, FontId::new(13.0, FontFamily::Proportional));
         s.text_styles
-            .insert(TextStyle::Heading, FontId::new(16.0, FontFamily::Proportional));
+            .insert(TextStyle::Heading, FontId::new(21.0, FontFamily::Proportional));
         s.text_styles
-            .insert(TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace));
+            .insert(TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace));
     });
 }
 
@@ -84,6 +84,11 @@ pub fn install_font(ctx: &egui::Context) {
     if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
         prop.insert(0, "be-vn-regular".to_owned());
     }
+    // The log view uses Monospace — it needs the Vietnamese face too,
+    // otherwise diacritics render as tofu boxes.
+    if let Some(mono) = fonts.families.get_mut(&FontFamily::Monospace) {
+        mono.insert(0, "be-vn-regular".to_owned());
+    }
     // Bold UI text falls back to the bold face.
     fonts
         .families
@@ -91,6 +96,18 @@ pub fn install_font(ctx: &egui::Context) {
         .or_default()
         .push("be-vn-bold".to_owned());
     ctx.set_fonts(fonts);
+}
+
+/// Card container: subtle raised panel with rounded corners, for grouping
+/// related controls (less monotonous than a flat list).
+pub fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::default()
+        .fill(Color32::from_rgb(0x24, 0x24, 0x24))
+        .stroke(Stroke::new(1.0, SEPARATOR))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(12))
+        .show(ui, add)
+        .inner
 }
 
 /// Premiere-style panel section label: small dim caps + hairline rule.
@@ -107,4 +124,29 @@ pub fn section(ui: &mut egui::Ui, title: &str) {
     ui.painter()
         .hline(rect.x_range(), rect.center().y, egui::Stroke::new(1.0, SEPARATOR));
     ui.add_space(4.0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn apply_sets_dark_visuals() {
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        assert_eq!(ctx.style().visuals.panel_fill, PANEL_BG);
+        assert_eq!(ctx.style().visuals.extreme_bg_color, FIELD_BG);
+    }
+    #[test]
+    fn install_font_does_not_panic() {
+        let ctx = egui::Context::default();
+        install_font(&ctx);
+    }
+    #[test]
+    fn visuals_survive_install_font_sequence() {
+        // mirrors App::new call order
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        install_font(&ctx);
+        assert_eq!(ctx.style().visuals.panel_fill, PANEL_BG);
+    }
 }
