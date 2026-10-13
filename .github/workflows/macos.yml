@@ -1,5 +1,5 @@
-# Build the macOS app on a real Mac runner (a Linux VM cannot produce
-# macOS binaries). Produces an arm64 .dmg with the egui app + CLI inside.
+# Build the macOS app on a real Mac runner. Produces an arm64 .dmg with a
+# proper .app bundle + drag-to-Applications layout (FilmCraft-style).
 name: macOS build
 
 on:
@@ -24,22 +24,80 @@ jobs:
       - name: Run core tests
         run: cargo test --release -p ytb2pdf-core
 
-      - name: Package .dmg
+      - name: Build .app bundle
+        run: |
+          APP="dist/ytb2pdf-app.app"
+          rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp target/release/ytb2pdf-app "$APP/Contents/MacOS/"
+          cat > "$APP/Contents/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>Ytb2Pdf</string>
+              <key>CFBundleDisplayName</key>
+              <string>YouTube to PDF</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.github.ngoluuduythai.ytb2pdf</string>
+              <key>CFBundleVersion</key>
+              <string>0.1.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>0.1.0</string>
+              <key>CFBundleExecutable</key>
+              <string>ytb2pdf-app</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          codesign --force --deep --sign - "$APP"  # ad-hoc (chưa thay notarize)
+
+      - name: Package .dmg (drag-to-Applications)
         run: |
           rm -rf dmg-root ytb2pdf-macos-arm64.dmg
           mkdir -p dmg-root
-          cp target/release/ytb2pdf-app dmg-root/
+          cp -R dist/ytb2pdf-app.app dmg-root/
           cp target/release/ytb2pdf-cli dmg-root/
           cp README.md dmg-root/README.txt
-          hdiutil create -volname "Ytb2Pdf" -srcfolder dmg-root \
-            -ov -format UDZO ytb2pdf-macos-arm64.dmg
+          ln -s /Applications dmg-root/Applications
+          cat > /tmp/dmg-layout.scpt <<'EOF'
+          tell application "Finder"
+              tell disk "Ytb2Pdf"
+                  open
+                  set current view of container window to icon view
+                  set toolbar visible of container window to false
+                  set statusbar visible of container window to false
+                  set the bounds of container window to {100, 100, 620, 420}
+                  set theViewOptions to the icon view options of container window
+                  set arrangement of theViewOptions to not arranged
+                  set icon size of theViewOptions to 96
+                  set position of item "ytb2pdf-app.app" of container window to {150, 180}
+                  set position of item "Applications" of container window to {380, 180}
+                  close
+                  open
+                  update without registering applications
+                  delay 2
+              end tell
+          end tell
+          EOF
+          hdiutil create -size 200m -fs HFS+ -volname "Ytb2Pdf" -format UDRW \
+            -o /tmp/ytb2pdf-rw.dmg -srcfolder dmg-root
+          hdiutil attach /tmp/ytb2pdf-rw.dmg -nobrowse -mountpoint /Volumes/Ytb2Pdf
+          osascript /tmp/dmg-layout.scpt || true
+          hdiutil detach /Volumes/Ytb2Pdf
+          hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o ytb2pdf-macos-arm64.dmg
+          rm -f /tmp/ytb2pdf-rw.dmg
 
       - uses: actions/upload-artifact@v4
         with:
           name: ytb2pdf-macos-arm64
           path: ytb2pdf-macos-arm64.dmg
 
-# TODO: code signing + notarization needs an Apple Developer certificate in
-# repo secrets (APPLE_CERT_P12, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID).
-# Unsigned builds will trigger Gatekeeper on first launch ("unidentified
-# developer") — right-click > Open bypasses it.
+# Muốn hết cảnh báo Gatekeeper: cần Apple Developer certificate
+# (APPLE_CERT_P12, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID trong repo secrets)
+# để codesign + notarize. Chưa có thì lần đầu mở app: chuột phải → Open.
