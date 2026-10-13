@@ -56,6 +56,14 @@ pub struct VideoMeta {
     pub thumbnail_url: Option<String>,
 }
 
+/// True when yt-dlp's stderr shows YouTube's player-level bot mitigation.
+/// The `web` player client is challenged most aggressively (SABR-only
+/// streaming / PO-token); other clients often still work.
+fn is_player_challenge(stderr: &str) -> bool {
+    stderr.contains("The page needs to be reloaded")
+        || stderr.contains("Sign in to confirm you")
+}
+
 /// Thin wrapper around the `yt-dlp` binary.
 #[derive(Debug, Clone, Default)]
 pub struct YtDlp {
@@ -99,15 +107,34 @@ impl YtDlp {
         let out = cmd
             .output()
             .with_context(|| "failed to run `yt-dlp` — install it with `brew install yt-dlp` (https://github.com/yt-dlp/yt-dlp)")?;
-        if !out.status.success() {
-            let err = String::from_utf8_lossy(&out.stderr);
+        if out.status.success() {
+            return Ok(out);
+        }
+        let err = String::from_utf8_lossy(&out.stderr).into_owned();
+        if is_player_challenge(&err) {
+            // YouTube's bot mitigation ("The page needs to be reloaded" /
+            // "Sign in to confirm you're not a bot") targets the `web`
+            // player client most aggressively. Retry once without it.
+            cmd.arg("--extractor-args")
+                .arg("youtube:player_client=-web");
+            let retry = cmd.output().with_context(|| "failed to re-run `yt-dlp`")?;
+            if retry.status.success() {
+                return Ok(retry);
+            }
+            let err2 = String::from_utf8_lossy(&retry.stderr);
             return Err(anyhow!(
-                "yt-dlp failed while {what} (exit {}):\n{}",
+                "yt-dlp failed while {what} (exit {}):\n{}\n(thử lại không dùng web player client cũng thất bại (exit {}):\n{})",
                 out.status,
-                err.trim()
+                err.trim(),
+                retry.status,
+                err2.trim()
             ));
         }
-        Ok(out)
+        Err(anyhow!(
+            "yt-dlp failed while {what} (exit {}):\n{}",
+            out.status,
+            err.trim()
+        ))
     }
 
     /// Fetch title / duration / uploader without downloading anything.
@@ -221,6 +248,18 @@ impl YtDlp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_player_challenge_errors() {
+        assert!(is_player_challenge(
+            "ERROR: [youtube] abc123: The page needs to be reloaded."
+        ));
+        assert!(is_player_challenge(
+            "ERROR: [youtube] abc123: Sign in to confirm you're not a bot"
+        ));
+        assert!(!is_player_challenge("ERROR: HTTP Error 429: Too Many Requests"));
+        assert!(!is_player_challenge(""));
+    }
 
     #[test]
     fn parses_common_url_shapes() {
