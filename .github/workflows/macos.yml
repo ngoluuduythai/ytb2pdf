@@ -1,0 +1,45 @@
+# Build the macOS app on a real Mac runner (a Linux VM cannot produce
+# macOS binaries). Produces an arm64 .dmg with the egui app + CLI inside.
+name: macOS build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14 # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install runtime deps (for tests)
+        run: brew install yt-dlp ffmpeg
+
+      - name: Build release
+        run: cargo build --release -p ytb2pdf-app -p ytb2pdf-cli
+
+      - name: Run core tests
+        run: cargo test --release -p ytb2pdf-core
+
+      - name: Package .dmg
+        run: |
+          rm -rf dmg-root ytb2pdf-macos-arm64.dmg
+          mkdir -p dmg-root
+          cp target/release/ytb2pdf-app dmg-root/
+          cp target/release/ytb2pdf-cli dmg-root/
+          cp README.md dmg-root/README.txt
+          hdiutil create -volname "Ytb2Pdf" -srcfolder dmg-root \
+            -ov -format UDZO ytb2pdf-macos-arm64.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ytb2pdf-macos-arm64
+          path: ytb2pdf-macos-arm64.dmg
+
+# TODO: code signing + notarization needs an Apple Developer certificate in
+# repo secrets (APPLE_CERT_P12, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID).
+# Unsigned builds will trigger Gatekeeper on first launch ("unidentified
+# developer") — right-click > Open bypasses it.
