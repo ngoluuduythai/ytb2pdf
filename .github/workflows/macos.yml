@@ -59,17 +59,24 @@ jobs:
 
       - name: Bundle yt-dlp + ffmpeg into the .app
         run: |
-          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
-          mkdir -p "$BIN"
-          # yt-dlp: official standalone macOS binary (universal)
-          curl -sSL -o "$BIN/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
-          chmod +x "$BIN/yt-dlp"
-          # ffmpeg: static arm64 build shipped in the imageio-ffmpeg wheel
-          pip3 install --quiet --break-system-packages imageio-ffmpeg
-          cp "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$BIN/ffmpeg"
-          chmod +x "$BIN/ffmpeg"
-          "$BIN/yt-dlp" --version
-          "$BIN/ffmpeg" -version 2>&1 | head -1
+         BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
+         mkdir -p "$BIN"
+         # yt-dlp: official standalone macOS binary (universal)
+         curl -sSL -o "$BIN/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+         chmod +x "$BIN/yt-dlp"
+         # ffmpeg: static arm64 build shipped in the imageio-ffmpeg wheel
+         pip3 install --quiet --break-system-packages imageio-ffmpeg
+         cp "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$BIN/ffmpeg"
+         chmod +x "$BIN/ffmpeg"
+         # deno: JS runtime so yt-dlp can solve YouTube's JS challenges (EJS)
+         curl -sSLf -o /tmp/deno.zip https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip
+         unzip -o -j /tmp/deno.zip -d "$BIN"
+         chmod +x "$BIN/deno"
+         rm -f /tmp/deno.zip
+         "$BIN/yt-dlp" --version
+         "$BIN/ffmpeg" -version 2>&1 | head -1
+         "$BIN/deno" --version | head -1
+
 
       - name: Ad-hoc sign the .app
         run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # chưa thay notarize
