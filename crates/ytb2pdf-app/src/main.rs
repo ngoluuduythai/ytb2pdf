@@ -26,6 +26,7 @@ struct App {
     gemini_api_key: String,
     whisper_model: WhisperModel,
     cookies_file: Option<PathBuf>,
+    transcript_file: Option<PathBuf>,
     running: bool,
     stage: String,
     progress: Option<(usize, usize)>,
@@ -46,6 +47,7 @@ impl App {
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             whisper_model: WhisperModel::default(),
             cookies_file: None,
+            transcript_file: None,
             running: false,
             stage: "Sẵn sàng".to_string(),
             progress: None,
@@ -83,6 +85,7 @@ impl App {
             (!self.gemini_api_key.trim().is_empty()).then(|| self.gemini_api_key.trim().to_string());
         cfg.whisper_model = self.whisper_model;
         cfg.cookies_file = self.cookies_file.clone();
+        cfg.transcript_file = self.transcript_file.clone();
         let video_id = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
             .map(|v| v.id)
             .unwrap_or_else(|_| "video".to_string());
@@ -221,6 +224,47 @@ impl eframe::App for App {
                         .hint_text("https://youtu.be/…")
                         .desired_width(f32::INFINITY),
                 );
+            });
+            ui.add_space(4.0);
+            // Optional transcript import: skips YouTube captions AND Whisper.
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Transcript").color(theme::TEXT_DIM));
+                if ui
+                    .add_enabled(!self.running, egui::Button::new("📄 Chọn file .srt…"))
+                    .clicked()
+                {
+                    if let Some(p) = rfd::FileDialog::new()
+                        .add_filter("Subtitles", &["srt", "vtt"])
+                        .pick_file()
+                    {
+                        self.transcript_file = Some(p);
+                    }
+                }
+                match &self.transcript_file {
+                    Some(p) => {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "✓ {}",
+                                p.file_name().unwrap_or_default().to_string_lossy()
+                            ))
+                            .color(theme::SUCCESS),
+                        );
+                        if ui
+                            .add_enabled(!self.running, egui::Button::new("✕"))
+                            .on_hover_text("Bỏ file transcript")
+                            .clicked()
+                        {
+                            self.transcript_file = None;
+                        }
+                    }
+                    None => {
+                        ui.label(
+                            egui::RichText::new("(tuỳ chọn — có file thì bỏ qua caption YouTube/Whisper)")
+                                .small()
+                                .color(theme::TEXT_FAINT),
+                        );
+                    }
+                }
             });
             ui.add_space(4.0);
             let primary = egui::Button::new(
