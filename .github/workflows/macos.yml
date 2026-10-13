@@ -1,5 +1,6 @@
-# Build the macOS app on a real Mac runner. Produces an arm64 .dmg with a
-# proper .app bundle + drag-to-Applications layout (FilmCraft-style).
+# Build the macOS app on a real Mac runner. Produces a self-contained arm64
+# .dmg: proper .app bundle (with bundled yt-dlp + ffmpeg, no Homebrew needed)
+# + drag-to-Applications layout (FilmCraft-style).
 name: macOS build
 
 on:
@@ -55,7 +56,23 @@ jobs:
           </dict>
           </plist>
           EOF
-          codesign --force --deep --sign - "$APP"  # ad-hoc (chưa thay notarize)
+
+      - name: Bundle yt-dlp + ffmpeg into the .app
+        run: |
+          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
+          mkdir -p "$BIN"
+          # yt-dlp: official standalone macOS binary (universal)
+          curl -sSL -o "$BIN/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+          chmod +x "$BIN/yt-dlp"
+          # ffmpeg: static arm64 build shipped in the imageio-ffmpeg wheel
+          pip3 install --quiet imageio-ffmpeg
+          cp "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$BIN/ffmpeg"
+          chmod +x "$BIN/ffmpeg"
+          "$BIN/yt-dlp" --version
+          "$BIN/ffmpeg" -version 2>&1 | head -1
+
+      - name: Ad-hoc sign the .app
+        run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # chưa thay notarize
 
       - name: Package .dmg (drag-to-Applications)
         run: |
@@ -85,7 +102,7 @@ jobs:
               end tell
           end tell
           EOF
-          hdiutil create -size 200m -fs HFS+ -volname "Ytb2Pdf" -format UDRW \
+          hdiutil create -size 300m -fs HFS+ -volname "Ytb2Pdf" -format UDRW \
             -o /tmp/ytb2pdf-rw.dmg -srcfolder dmg-root
           hdiutil attach /tmp/ytb2pdf-rw.dmg -nobrowse -mountpoint /Volumes/Ytb2Pdf
           osascript /tmp/dmg-layout.scpt || true
