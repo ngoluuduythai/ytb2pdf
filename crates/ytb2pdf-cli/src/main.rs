@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use ytb2pdf_core::{run_pipeline, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies-from-browser <name>]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -37,6 +37,10 @@ fn main() -> Result<()> {
             }
             "--from" => {
                 cfg.source_lang = flag(i + 1)?;
+                i += 2;
+            }
+            "--cookies" => {
+                cfg.cookies_file = Some(PathBuf::from(flag(i + 1)?));
                 i += 2;
             }
             "--cookies-from-browser" => {
