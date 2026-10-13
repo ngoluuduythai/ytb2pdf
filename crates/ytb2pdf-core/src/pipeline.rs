@@ -23,6 +23,8 @@ pub struct PipelineConfig {
     pub gemini_api_key: Option<String>,
     /// Cookie file (Netscape format) passed to yt-dlp as `--cookies` (anti-403/429).
     pub cookies_file: Option<PathBuf>,
+    /// Whisper model used when the video has no YouTube captions.
+    pub whisper_model: whisper::WhisperModel,
     /// Passed to yt-dlp as `--cookies-from-browser` (anti-403). Used only
     /// when `cookies_file` is not set.
     pub cookies_from_browser: Option<String>,
@@ -41,6 +43,7 @@ impl Default for PipelineConfig {
             source_lang: "en".to_string(),
             target_lang: None,
             gemini_api_key: None,
+            whisper_model: whisper::WhisperModel::default(),
             cookies_file: None,
             cookies_from_browser: None,
             work_dir: PathBuf::from("ytb2pdf-work"),
@@ -111,12 +114,16 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
                 ytdlp.download_audio(&video, &audio_path)?;
                 log(format!("Audio: {}", audio_path.display()));
                 emit(PipelineEvent::Stage("Nhận dạng giọng nói (Whisper)"));
-                log("Đang chạy mlx-whisper trên Apple Silicon, có thể mất vài phút…".to_string());
+                log(format!(
+                    "Đang chạy whisper.cpp (model {}) — có thể mất vài phút…",
+                    cfg.whisper_model.label()
+                ));
                 whisper::transcribe_audio(
                     &audio_path,
                     &cfg.work_dir,
-                    whisper::DEFAULT_MODEL,
+                    cfg.whisper_model,
                     &cfg.source_lang,
+                    &log,
                 )?
             }
             Err(e) => {
