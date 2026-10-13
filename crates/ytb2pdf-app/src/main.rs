@@ -184,14 +184,14 @@ impl eframe::App for App {
 
         // ---- header bar ----
         egui::TopBottomPanel::top("header")
-            .exact_height(56.0)
+            .exact_height(64.0)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.add_space(4.0);
                     ui.vertical(|ui| {
                         ui.add_space(4.0);
                         ui.label(
-                            egui::RichText::new("YouTube → PDF")
+                            egui::RichText::new("YouTube » PDF")
                                 .heading()
                                 .strong()
                                 .color(theme::TEXT),
@@ -216,69 +216,69 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             // ---- source ----
             theme::section(ui, "NGUỒN");
-            ui.horizontal(|ui| {
+            theme::card(ui, |ui| {
+                ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Link YouTube").color(theme::TEXT_DIM));
                 ui.add_enabled(
-                    !self.running,
-                    egui::TextEdit::singleline(&mut self.url)
-                        .hint_text("https://youtu.be/…")
-                        .desired_width(f32::INFINITY),
+                !self.running,
+                egui::TextEdit::singleline(&mut self.url)
+                .hint_text("https://youtu.be/…")
+                .desired_width(f32::INFINITY),
                 );
-            });
-            ui.add_space(4.0);
-            // Optional transcript import: skips YouTube captions AND Whisper.
-            ui.horizontal(|ui| {
+                });
+                ui.add_space(4.0);
+                // Optional transcript import: skips YouTube captions AND Whisper.
+                ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Transcript").color(theme::TEXT_DIM));
                 if ui
-                    .add_enabled(!self.running, egui::Button::new("📄 Chọn file .srt…"))
-                    .clicked()
+                .add_enabled(!self.running, egui::Button::new("Chọn file .srt…"))
+                .clicked()
                 {
-                    if let Some(p) = rfd::FileDialog::new()
-                        .add_filter("Subtitles", &["srt", "vtt"])
-                        .pick_file()
-                    {
-                        self.transcript_file = Some(p);
-                    }
+                if let Some(p) = rfd::FileDialog::new()
+                .add_filter("Subtitles", &["srt", "vtt"])
+                .pick_file()
+                {
+                self.transcript_file = Some(p);
+                }
                 }
                 match &self.transcript_file {
-                    Some(p) => {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "✓ {}",
-                                p.file_name().unwrap_or_default().to_string_lossy()
-                            ))
-                            .color(theme::SUCCESS),
-                        );
-                        if ui
-                            .add_enabled(!self.running, egui::Button::new("✕"))
-                            .on_hover_text("Bỏ file transcript")
-                            .clicked()
-                        {
-                            self.transcript_file = None;
-                        }
-                    }
-                    None => {
-                        ui.label(
-                            egui::RichText::new("(tuỳ chọn — có file thì bỏ qua caption YouTube/Whisper)")
-                                .small()
-                                .color(theme::TEXT_FAINT),
-                        );
-                    }
+                Some(p) => {
+                ui.label(
+                egui::RichText::new(format!(
+                "• {}",
+                p.file_name().unwrap_or_default().to_string_lossy()
+                ))
+                .color(theme::SUCCESS),
+                );
+                if ui
+                .add_enabled(!self.running, egui::Button::new("×"))
+                .on_hover_text("Bỏ file transcript")
+                .clicked()
+                {
+                self.transcript_file = None;
                 }
-            });
-            ui.add_space(4.0);
-            let primary = egui::Button::new(
-                egui::RichText::new(if self.running { "⏳ Đang xử lý…" } else { "▶  Tạo PDF" })
-                    .color(egui::Color32::WHITE)
-                    .strong(),
-            )
-            .fill(theme::ACCENT)
-            .min_size(egui::vec2(200.0, 38.0));
-            ui.horizontal(|ui| {
+                }
+                None => {
+                ui.label(
+                egui::RichText::new("(tuỳ chọn — có file thì bỏ qua caption YouTube/Whisper)")
+                .small()
+                .color(theme::TEXT_FAINT),
+                );
+                }
+                }
+                });
+                ui.add_space(8.0);
+                let primary = egui::Button::new(
+                egui::RichText::new(if self.running { "Đang xử lý…" } else { "Tạo PDF" })
+                .color(egui::Color32::WHITE)
+                .strong(),
+                )
+                .fill(theme::ACCENT)
+                .min_size(egui::vec2(240.0, 44.0));
                 if ui.add_enabled(!self.running, primary).clicked() {
-                    self.start();
+                self.start();
                 }
-            });
+            }); // end card
 
             // ---- options ----
             theme::section(ui, "TÙY CHỌN");
