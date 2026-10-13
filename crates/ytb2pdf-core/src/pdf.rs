@@ -5,8 +5,9 @@
 //! original caption, and the translation underneath when requested.
 //!
 //! Vietnamese text needs a TTF with Vietnamese glyphs (the built-in PDF
-//! fonts only cover WinAnsi). We embed DejaVu Sans by default and look for it
-//! in the usual system font dirs; override with [`PdfOptions::font_dir`].
+//! fonts only cover WinAnsi). We bundle Be Vietnam Pro (OFL) in
+//! `crates/ytb2pdf-core/fonts/` and embed it in the binary; override with
+//! [`PdfOptions::font_dir`], with system fonts as the last resort.
 
 use anyhow::{anyhow, Context, Result};
 use genpdf::elements::{Break, Image, PageBreak, Paragraph};
@@ -69,16 +70,44 @@ fn font_names(preferred: &str) -> Vec<String> {
     names
 }
 
+/// Be Vietnam Pro, bundled in `fonts/` (OFL 1.1 — free to embed).
+/// Loaded with `include_bytes!` so the binary works on any machine with
+/// zero font setup (CI runners, fresh Macs, …).
+fn embedded_font_family() -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>> {
+    use genpdf::fonts::{FontData, FontFamily};
+    let load = |name: &str, bytes: &'static [u8]| {
+        FontData::new(bytes.to_vec(), None)
+            .map_err(|e| anyhow!("bundled font {name} is unreadable: {e}"))
+    };
+    Ok(FontFamily {
+        regular: load("Regular", include_bytes!("../fonts/BeVietnamPro-Regular.ttf"))?,
+        bold: load("Bold", include_bytes!("../fonts/BeVietnamPro-Bold.ttf"))?,
+        italic: load("Italic", include_bytes!("../fonts/BeVietnamPro-Italic.ttf"))?,
+        bold_italic: load("BoldItalic", include_bytes!("../fonts/BeVietnamPro-BoldItalic.ttf"))?,
+    })
+}
+
 fn load_font_family(opts: &PdfOptions) -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>> {
     use genpdf::fonts::{FontData, FontFamily};
 
-    // genpdf's from_files() wants `{name}-Regular.ttf` etc., but real-world
-    // families (DejaVu, Noto, Arial) name the regular file `{name}.ttf`.
-    // Try every (dir × name) combo: strict layout first, then a forgiving
-    // per-style search.
+    // 1. explicit override  2. bundled Be Vietnam Pro  3. system fonts
+    let mut dirs: Vec<PathBuf> = opts.font_dir.clone().into_iter().collect();
+    let names = font_names(&opts.font_name);
+    for dir in &dirs {
+        for name in &names {
+            if let Ok(f) = genpdf::fonts::from_files(dir, name, None) {
+                return Ok(f);
+            }
+        }
+    }
+    if let Ok(f) = embedded_font_family() {
+        return Ok(f);
+    }
+
+    // 3. system fonts: every (dir × name) combo, strict layout first, then
+    // a forgiving per-style search (DejaVu/Noto/Arial name files differently).
     let mut dirs: Vec<PathBuf> = opts.font_dir.clone().into_iter().collect();
     dirs.extend(candidate_font_dirs());
-    let names = font_names(&opts.font_name);
     for dir in &dirs {
         for name in &names {
             if let Ok(f) = genpdf::fonts::from_files(dir, name, None) {
