@@ -98,7 +98,7 @@ impl YtDlp {
     fn run(&self, mut cmd: Command, what: &str) -> Result<std::process::Output> {
         let out = cmd
             .output()
-            .with_context(|| "failed to run `yt-dlp` — is it installed and on PATH? (https://github.com/yt-dlp/yt-dlp)")?;
+            .with_context(|| "failed to run `yt-dlp` — install it with `brew install yt-dlp` (https://github.com/yt-dlp/yt-dlp)")?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
             return Err(anyhow!(
