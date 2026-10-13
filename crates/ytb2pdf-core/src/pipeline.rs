@@ -96,9 +96,12 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     emit(PipelineEvent::Stage("Tải caption"));
     let sub_file = ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir).map_err(|e| {
         anyhow::anyhow!(
-            "{e}\n\nGợi ý: YouTube đang giới hạn IP này (429/403). Hãy điền cookie từ browser \
-             vào ô \"Cookie từ browser\" (vd: chrome) — request kèm session đăng nhập thường \
-             thoát được giới hạn này — rồi bấm Tạo PDF lại. Hoặc đợi vài phút cho hết throttle."
+            "{e}\n\nGợi ý: nếu là lỗi 429/403/bot-check, hãy bấm \"Chọn cookies.txt\" \
+             (export khi đang mở youtube.com) rồi bấm Tạo PDF lại — request kèm session \
+             đăng nhập thường thoát được giới hạn IP. Nếu báo không có caption, video này \
+             có thể không có phụ đề tiếng {sl}: kiểm tra bằng lệnh \
+             yt-dlp --list-subs --skip-download \"URL\".",
+            sl = cfg.source_lang
         )
     })?;
     log(format!("Caption: {}", sub_file.display()));
