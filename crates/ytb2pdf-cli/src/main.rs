@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use ytb2pdf_core::{run_pipeline, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>]\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -49,6 +49,14 @@ fn main() -> Result<()> {
             }
             "--gemini-key" => {
                 cfg.gemini_api_key = Some(flag(i + 1)?);
+                i += 2;
+            }
+            "--transcript" => {
+                let p = std::path::PathBuf::from(flag(i + 1)?);
+                if !p.is_file() {
+                    anyhow::bail!("--transcript: không tìm thấy file {}", p.display());
+                }
+                cfg.transcript_file = Some(p);
                 i += 2;
             }
             "--whisper-model" => {
