@@ -53,78 +53,95 @@ fn candidate_font_dirs() -> Vec<PathBuf> {
     dirs.push(PathBuf::from("/usr/share/fonts/truetype/dejavu")); // Linux
     dirs.push(PathBuf::from("/usr/share/fonts/truetype")); // Linux
     dirs.push(PathBuf::from("/System/Library/Fonts")); // macOS system fonts
+    dirs.push(PathBuf::from("/System/Library/Fonts/Supplemental")); // macOS: Arial.ttf etc.
     dirs
+}
+
+/// Font names to try, in order. macOS runners have no DejaVu, but they do
+/// ship Arial (with full Vietnamese coverage) in Fonts/Supplemental.
+fn font_names(preferred: &str) -> Vec<String> {
+    let mut names = vec![preferred.to_string()];
+    for n in ["DejaVuSans", "Arial"] {
+        if n != preferred {
+            names.push(n.to_string());
+        }
+    }
+    names
 }
 
 fn load_font_family(opts: &PdfOptions) -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>> {
     use genpdf::fonts::{FontData, FontFamily};
 
     // genpdf's from_files() wants `{name}-Regular.ttf` etc., but real-world
-    // families (DejaVu, Noto) name the regular file `{name}.ttf`. Try the
-    // strict layout first, then a forgiving per-style search.
+    // families (DejaVu, Noto, Arial) name the regular file `{name}.ttf`.
+    // Try every (dir × name) combo: strict layout first, then a forgiving
+    // per-style search.
     let mut dirs: Vec<PathBuf> = opts.font_dir.clone().into_iter().collect();
     dirs.extend(candidate_font_dirs());
+    let names = font_names(&opts.font_name);
     for dir in &dirs {
-        if let Ok(f) = genpdf::fonts::from_files(dir, &opts.font_name, None) {
-            return Ok(f);
+        for name in &names {
+            if let Ok(f) = genpdf::fonts::from_files(dir, name, None) {
+                return Ok(f);
+            }
         }
     }
 
     let candidates: &[(&str, &[&str])] = &[
         ("regular", &["{n}.ttf", "{n}-Regular.ttf", "{n}-regular.ttf"]),
-        ("bold", &["{n}-Bold.ttf", "{n}Bold.ttf", "{n}-bold.ttf"]),
+        ("bold", &["{n}-Bold.ttf", "{n}Bold.ttf", "{n}-bold.ttf", "{n} Bold.ttf"]),
         ("italic", &["{n}-Oblique.ttf", "{n}-Italic.ttf", "{n}Oblique.ttf", "{n}Italic.ttf"]),
         ("bold_italic", &["{n}-BoldOblique.ttf", "{n}-BoldItalic.ttf", "{n}BoldOblique.ttf"]),
     ];
     let mut tried = Vec::new();
-    let mut loaded: Vec<FontData> = Vec::new();
-    let mut regular_fallback: Option<FontData> = None;
-    for (style, patterns) in candidates {
-        let mut found = None;
-        for dir in &dirs {
-            for pat in *patterns {
-                let file = dir.join(pat.replace("{n}", &opts.font_name));
-                tried.push(file.display().to_string());
-                if file.exists() {
-                    match FontData::load(&file, None) {
-                        Ok(d) => {
-                            found = Some(d);
-                            break;
+    'names: for name in &names {
+        let mut loaded: Vec<FontData> = Vec::new();
+        let mut regular_fallback: Option<FontData> = None;
+        for (style, patterns) in candidates {
+            let mut found = None;
+            for dir in &dirs {
+                for pat in *patterns {
+                    let file = dir.join(pat.replace("{n}", name));
+                    tried.push(file.display().to_string());
+                    if file.exists() {
+                        match FontData::load(&file, None) {
+                            Ok(d) => {
+                                found = Some(d);
+                                break;
+                            }
+                            Err(_) => continue,
                         }
-                        Err(_) => continue,
                     }
                 }
-            }
-            if found.is_some() {
-                break;
-            }
-        }
-        match found {
-            Some(d) => {
-                if *style == "regular" {
-                    regular_fallback = Some(d.clone());
+                if found.is_some() {
+                    break;
                 }
-                loaded.push(d);
             }
-            None if *style == "regular" => {
-                return Err(anyhow!(
-                    "could not find a regular TTF for font `{}`.\nSearched: {}\n\
-                     Fix: point PdfOptions::font_dir at a folder with a Vietnamese-capable TTF \
-                     (e.g. DejaVuSans.ttf).",
-                    opts.font_name,
-                    tried.join(", ")
-                ));
+            match found {
+                Some(d) => {
+                    if *style == "regular" {
+                        regular_fallback = Some(d.clone());
+                    }
+                    loaded.push(d);
+                }
+                None if *style == "regular" => continue 'names, // try next font name
+                // missing bold/italic variants fall back to regular — fine for v0.1
+                None => loaded.push(regular_fallback.clone().unwrap()),
             }
-            // missing bold/italic variants fall back to regular — fine for v0.1
-            None => loaded.push(regular_fallback.clone().unwrap()),
         }
+        return Ok(FontFamily {
+            regular: loaded[0].clone(),
+            bold: loaded[1].clone(),
+            italic: loaded[2].clone(),
+            bold_italic: loaded[3].clone(),
+        });
     }
-    Ok(FontFamily {
-        regular: loaded[0].clone(),
-        bold: loaded[1].clone(),
-        italic: loaded[2].clone(),
-        bold_italic: loaded[3].clone(),
-    })
+    Err(anyhow!(
+        "could not find a usable TTF for any of {:?}.\nSearched {} locations.\n\
+         Fix: point PdfOptions::font_dir at a folder with a Vietnamese-capable TTF.",
+        names,
+        tried.len(),
+    ))
 }
 
 pub fn format_timestamp(secs: f64) -> String {
