@@ -18,19 +18,44 @@ pub const DEFAULT_MODEL: &str = "mlx-community/whisper-base-mlx";
 
 const DRIVER: &str = include_str!("../scripts/transcribe.py");
 
-fn check_mlx_whisper() -> Result<()> {
-    let st = Command::new("python3")
-        .arg("-c")
-        .arg("import mlx_whisper")
-        .output()
-        .context("failed to run `python3`")?;
-    if st.status.success() {
-        return Ok(());
+/// Find a Python interpreter that has `mlx_whisper` importable.
+/// Apps launched from Finder get macOS's minimal PATH, so the `python3` on
+/// PATH is often *not* the one the user installed packages into (homebrew /
+/// conda / asdf...). Probe the usual suspects explicitly.
+fn find_python() -> Result<String> {
+    let mut candidates: Vec<String> = vec!["python3".into(), "python".into()];
+    if let Ok(home) = std::env::var("HOME") {
+        for rel in [
+            "miniconda3/bin/python3",
+            "miniconda3/bin/python",
+            "anaconda3/bin/python3",
+            "anaconda3/bin/python",
+            ".asdf/shims/python3",
+        ] {
+            candidates.push(format!("{home}/{rel}"));
+        }
+    }
+    candidates.push("/opt/homebrew/bin/python3".into());
+    candidates.push("/opt/homebrew/bin/python".into());
+    candidates.push("/usr/local/bin/python3".into());
+
+    for c in &candidates {
+        let ok = Command::new(c)
+            .arg("-c")
+            .arg("import mlx_whisper")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
+            return Ok(c.clone());
+        }
     }
     Err(anyhow!(
         "mlx-whisper chưa được cài (cần cho video không có caption).\n\
          Cài một lần trên Mac Apple Silicon:\n  \
-         pip3 install --break-system-packages mlx-whisper"
+         pip3 install --break-system-packages mlx-whisper\n\
+         (đã thử: {})",
+        candidates.join(", ")
     ))
 }
 
@@ -70,18 +95,18 @@ pub fn transcribe_audio(
     model: &str,
     language: &str,
 ) -> Result<Vec<Segment>> {
-    check_mlx_whisper()?;
+    let python = find_python()?;
 
     let driver_path = work_dir.join("transcribe_mlx.py");
     std::fs::write(&driver_path, DRIVER).context("writing whisper driver script")?;
 
-    let out = Command::new("python3")
+    let out = Command::new(&python)
         .arg(&driver_path)
         .arg(audio)
         .arg(model)
         .arg(language)
         .output()
-        .context("failed to run the whisper driver (python3)")?;
+        .with_context(|| format!("failed to run the whisper driver ({python})"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(anyhow!(
