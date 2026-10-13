@@ -20,6 +20,7 @@ struct App {
     url: String,
     translate: bool,
     target_lang: String,
+    gemini_api_key: String,
     cookies_file: Option<PathBuf>,
     running: bool,
     stage: String,
@@ -37,6 +38,7 @@ impl App {
             url: String::new(),
             translate: true,
             target_lang: "vi".to_string(),
+            gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             cookies_file: None,
             running: false,
             stage: "Nhập link YouTube rồi bấm Tạo PDF".to_string(),
@@ -68,6 +70,8 @@ impl App {
         let mut cfg = PipelineConfig::default();
         cfg.url = url;
         cfg.target_lang = self.translate.then(|| self.target_lang.trim().to_string()).filter(|s| !s.is_empty());
+        cfg.gemini_api_key = (!self.gemini_api_key.trim().is_empty())
+            .then(|| self.gemini_api_key.trim().to_string());
         cfg.cookies_file = self.cookies_file.clone();
         let video_id = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
             .map(|v| v.id)
@@ -215,6 +219,19 @@ impl eframe::App for App {
                 );
             });
             ui.label("Xuất file bằng extension Get cookies.txt LOCALLY khi đang mở youtube.com");
+
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label("Gemini API key:");
+                ui.add_enabled(
+                    !self.running && self.translate,
+                    egui::TextEdit::singleline(&mut self.gemini_api_key)
+                        .password(true)
+                        .hint_text("dán key vào đây (free tại aistudio.google.com)")
+                        .desired_width(ui.available_width() - 120.0),
+                );
+            });
+            ui.label("Key chỉ lưu trong phiên chạy này, không ghi ra file.");
 
             ui.add_space(8.0);
             let btn = ui.add_enabled(
