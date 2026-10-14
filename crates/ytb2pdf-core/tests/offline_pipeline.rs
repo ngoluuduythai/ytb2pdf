@@ -69,6 +69,7 @@ fn offline_video_to_pdf() {
             caption: seg.text.clone(),
             caption_translated: Some(format!("(dịch) {}", seg.text)),
             image: Some(kept[ki].path.clone()),
+            merged: false,
         });
     }
     let meta = PdfMeta {
