@@ -25,6 +25,9 @@ ytb2pdf-cli "<youtube-url>" \
   --cookies <cookies.txt> \       # Netscape format; REQUIRED on datacenter IPs
   --out <output.pdf> \
   [--to vi] \                     # optional: EN->VI translation (needs GEMINI_API_KEY)
+  [--quality 480] \               # optional: 480|720|1080 max height (default 720;
+                                  #   use 480 for very long videos — smaller download)
+  [--jobs 4] \                    # optional: parallel ffmpeg workers (default: CPU count)
   --json
 ```
 
@@ -42,8 +45,11 @@ Exit code is non-zero on failure; the stderr message explains what went wrong.
 - **YouTube bot-checks**: datacenter/cloud IPs are routinely 429'd or
   challenged. A fresh `cookies.txt` (exported while logged into youtube.com)
   is required in that case. Do NOT hammer on 429 — back off and retry later.
-- **Long videos**: frame capture is one `ffmpeg` call per caption segment;
-  a 3h video can take 30-90 min. Always run in the background and poll.
+- **Long videos**: frame capture is parallel (default: CPU count, `--jobs N`
+  to override) and resumable — already-captured frames are skipped, so a
+  restarted run continues where it left off. Video download also resumes
+  partial `.part` files. Keep logs and work dirs under `~/workspace`
+  (persistent), NOT `/tmp` (wiped on VM replacement).
 - **Copyright**: only process videos the user is authorized to use.
 - **No browser-cookie access**: never use `--cookies-from-browser` unless the
   user explicitly asks; prefer a scoped `cookies.txt` file.
