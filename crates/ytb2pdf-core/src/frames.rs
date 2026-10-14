@@ -77,22 +77,63 @@ pub fn dedupe_frames(frames: Vec<Frame>, max_distance: u32) -> Vec<Frame> {
 }
 
 /// Capture one frame per timestamp, hashing each for the dedupe pass.
+///
+/// Runs `jobs` ffmpeg workers in parallel. Resumable: if `frame_{i:05}.jpg`
+/// already exists in `out_dir`, ffmpeg is skipped and the file is hashed
+/// directly — so a restarted run continues where it left off.
 pub fn capture_frames(
     video: &Path,
     timestamps: &[f64],
     out_dir: &Path,
-    on_one: &impl Fn(usize, usize),
+    jobs: usize,
+    on_one: &(dyn Fn(usize, usize) + Sync),
 ) -> Result<Vec<Frame>> {
     std::fs::create_dir_all(out_dir).context("creating frame dir")?;
-    let mut frames = Vec::with_capacity(timestamps.len());
-    for (i, &t) in timestamps.iter().enumerate() {
-        let path = out_dir.join(format!("frame_{i:05}.jpg"));
-        extract_frame(video, t, &path)?;
-        let img = image::open(&path)
-            .with_context(|| format!("reading back {}", path.display()))?;
-        frames.push(Frame { at_secs: t, path, hash: dhash(&img) });
-        on_one(i + 1, timestamps.len());
+    let total = timestamps.len();
+    if total == 0 {
+        return Ok(vec![]);
     }
+    let jobs = jobs.max(1).min(total);
+    let chunk_size = total.div_ceil(jobs);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+
+    let chunks: Result<Vec<Vec<Frame>>> = std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for (chunk_idx, chunk) in timestamps.chunks(chunk_size).enumerate() {
+            let start_idx = chunk_idx * chunk_size;
+            let video = video.to_path_buf();
+            let out_dir = out_dir.to_path_buf();
+            let done_ref = &done;
+            handles.push(s.spawn(move || {
+                let mut frames = Vec::with_capacity(chunk.len());
+                for (j, &t) in chunk.iter().enumerate() {
+                    let i = start_idx + j;
+                    let path = out_dir.join(format!("frame_{i:05}.jpg"));
+                    if !path.exists() {
+                        extract_frame(&video, t, &path)?;
+                    }
+                    let img = image::open(&path)
+                        .with_context(|| format!("reading back {}", path.display()))?;
+                    frames.push(Frame {
+                        at_secs: t,
+                        path,
+                        hash: dhash(&img),
+                    });
+                    let n = done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    on_one(n, total);
+                }
+                Ok::<_, anyhow::Error>(frames)
+            }));
+        }
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("frame worker panicked"))
+            .collect()
+    });
+
+    let mut frames: Vec<Frame> = chunks?.into_iter().flatten().collect();
+    // Workers finish out of order — restore timestamp order for dedupe.
+    frames.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(frames)
 }
 
