@@ -17,6 +17,7 @@ pub mod pdf;
 pub mod pipeline;
 pub mod subtitles;
 pub mod translate;
+pub mod v2;
 pub mod whisper;
 pub mod youtube;
 
