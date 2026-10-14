@@ -7,4 +7,5 @@ description = "CLI front end for the YouTube -> PDF pipeline"
 
 [dependencies]
 anyhow = "1"
+serde_json = "1"
 ytb2pdf-core = { path = "../ytb2pdf-core" }
