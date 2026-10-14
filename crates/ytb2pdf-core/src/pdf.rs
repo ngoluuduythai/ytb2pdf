@@ -522,16 +522,10 @@ pub fn build_pdf(
         }
         doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
 
+        // Caption as a clean flowing paragraph — no timestamps in the text
+        // (the footer's YouTube link already carries the time reference).
         let mut sub = Paragraph::new("");
-        if b.merged {
-            // Scene narration: one flowing paragraph, no per-segment times.
-            sub.push_styled(b.caption.clone(), caption_style.clone());
-        } else {
-            sub.push_styled(
-                format!("[{}]  {}", format_timestamp(b.timestamp_secs), b.caption),
-                caption_style.clone(),
-            );
-        }
+        sub.push_styled(b.caption.clone(), caption_style.clone());
         doc.push(sub);
         if let Some(vi) = &b.caption_translated {
             if vi != &b.caption {
