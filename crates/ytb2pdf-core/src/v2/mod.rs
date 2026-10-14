@@ -9,6 +9,7 @@
 
 pub mod hi_res;
 pub mod mapping;
+pub mod pipeline;
 pub mod proxy;
 pub mod scene;
 pub mod segments;
