@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use ytb2pdf_core::{run_pipeline, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -76,6 +76,18 @@ fn main() -> Result<()> {
             "--json" => {
                 json_out = true;
                 i += 1;
+            }
+            "--quality" => {
+                cfg.max_height = flag(i + 1)?
+                    .parse()
+                    .map_err(|_| anyhow!("--quality must be a height like 480, 720 or 1080"))?;
+                i += 2;
+            }
+            "--jobs" => {
+                cfg.jobs = flag(i + 1)?
+                    .parse()
+                    .map_err(|_| anyhow!("--jobs must be a positive integer"))?;
+                i += 2;
             }
             other => {
                 eprintln!("unknown flag: {other}\n{}", usage());
