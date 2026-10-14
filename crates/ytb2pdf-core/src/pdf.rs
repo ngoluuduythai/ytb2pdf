@@ -1,8 +1,9 @@
 //! PDF assembly with `genpdf` (pure-Rust, built on printpdf).
 //!
-//! Layout: cover page (title / channel / duration / source link), then one
-//! block per caption segment — timestamp, the frame that was on screen,
-//! original caption, and the translation underneath when requested.
+//! Layout ("video frame" style): landscape A4, one caption segment per page —
+//! video title header, the frame big and centered, the subtitle right below
+//! it, and a fixed footer with a clickable "YouTube reference" link.
+//! Dark navy palette, in the spirit of the app's FilmCraft dark theme.
 //!
 //! Vietnamese text needs a TTF with Vietnamese glyphs (the built-in PDF
 //! fonts only cover WinAnsi). We bundle Be Vietnam Pro (OFL) in
@@ -10,18 +11,45 @@
 //! [`PdfOptions::font_dir`], with system fonts as the last resort.
 
 use anyhow::{anyhow, Context, Result};
+use lopdf::dictionary;
 use genpdf::elements::{Break, Image, PageBreak, Paragraph};
 use genpdf::render::Area;
-use genpdf::style::{Style, StyledString};
+use genpdf::style::{Color, Style, StyledString};
 use genpdf::{
-    Alignment, Context as GenContext, Document, Element, Margins, Mm, Position, RenderResult,
-    SimplePageDecorator, Size,
+    Alignment, Context as GenContext, Document, Margins, Mm, PageDecorator, Position, Rotation,
+    Scale, Size,
 };
 use std::path::{Path, PathBuf};
 
-/// Page content height in mm: A4 (297) minus the decorator margins below.
-/// Keep in sync with the `Margins::trbl` call in [`build_pdf`].
-const PAGE_CONTENT_H_MM: f64 = 297.0 - 18.0 - 18.0;
+// ---- landscape A4 "video frame" layout (all mm) ----
+const PAGE_W_MM: f64 = 297.0;
+const PAGE_H_MM: f64 = 210.0;
+const MARGIN_MM: f64 = 15.0;
+/// Footer strip (divider + "YouTube reference" + URL) reserved at the bottom.
+const FOOTER_H_MM: f64 = 18.0;
+const CONTENT_W_MM: f64 = PAGE_W_MM - 2.0 * MARGIN_MM; // 267
+const CONTENT_H_MM: f64 = PAGE_H_MM - 2.0 * MARGIN_MM - FOOTER_H_MM; // 162
+/// Header (title + kicker + gap) budget inside the content area.
+const HEADER_H_MM: f64 = 16.0;
+/// Max frame height; shrinks when the subtitle needs more lines.
+const FRAME_MAX_H_MM: f64 = 120.0;
+const FRAME_MIN_H_MM: f64 = 40.0;
+
+// ---- palette: deep navy page, steel-blue accents ----
+const BG: (u8, u8, u8) = (0x0B, 0x12, 0x20);
+const INK: (u8, u8, u8) = (0xF2, 0xF5, 0xF9);
+const STEEL: (u8, u8, u8) = (0x7A, 0x8B, 0xA8);
+const URL_INK: (u8, u8, u8) = (0xA0, 0xAF, 0xC3);
+const DIVIDER_C: (u8, u8, u8) = (0x2D, 0x3C, 0x5A);
+
+// ---- footer geometry, measured from the top of the page ----
+const DIVIDER_Y_MM: f64 = PAGE_H_MM - MARGIN_MM - FOOTER_H_MM + 3.0; // 180
+const REFLABEL_Y_MM: f64 = DIVIDER_Y_MM + 5.0; // 185
+const URL_Y_MM: f64 = DIVIDER_Y_MM + 10.5; // 190.5
+
+fn rgb(c: (u8, u8, u8)) -> Color {
+    Color::Rgb(c.0, c.1, c.2)
+}
 
 pub struct PdfMeta {
     pub title: String,
@@ -222,74 +250,161 @@ fn para(text: &str, style: &Style) -> Paragraph {
     Paragraph::new(StyledString::new(text, style.clone()))
 }
 
-/// Timestamp heading + frame image as one unbreakable unit.
+/// Page decorator: paints the dark navy background, draws the fixed footer
+/// (divider + "YouTube reference" + per-page URL), then hands the remaining
+/// content area (margins minus the footer strip) to the flow layout.
 ///
-/// Background: genpdf's `Image` paints itself even when it does not fit the
-/// remaining page area (it always reports `has_more = false`), so a frame
-/// near the bottom of a page gets drawn past the page edge — the viewer
-/// clips it and the lower half of the picture is silently lost. This
-/// wrapper measures first: if the heading+image pair does not fit in what
-/// is left of the page, it draws nothing and asks for a fresh page, so the
-/// pair is never torn at a page boundary.
-struct BlockHead {
-    head: Paragraph,
-    head_style: Style,
-    image: Image,
-    /// Rendered image height (genpdf draws at 300 dpi by default) + margin.
-    image_h: Mm,
+/// The footer URL sits at a fixed rect on every page, which is what
+/// [`add_link_annotations`] targets for the clickable links.
+struct FrameDecorator {
+    bg: image023::DynamicImage,
+    urls: Vec<String>,
+    page_idx: usize,
 }
 
-impl BlockHead {
-    fn new(head: Paragraph, head_style: Style, image: Image, image_h: Mm) -> Self {
+impl FrameDecorator {
+    fn new(urls: Vec<String>) -> Self {
+        let mut px = image023::RgbImage::new(1, 1);
+        px.put_pixel(0, 0, image023::Rgb([BG.0, BG.1, BG.2]));
         Self {
-            head,
-            head_style,
-            image,
-            image_h,
+            bg: image023::DynamicImage::ImageRgb8(px),
+            urls,
+            page_idx: 0,
         }
     }
 }
 
-impl Element for BlockHead {
-    fn render(
+impl PageDecorator for FrameDecorator {
+    fn decorate_page<'a>(
         &mut self,
         context: &GenContext,
-        mut area: Area<'_>,
-        style: Style,
-    ) -> Result<RenderResult, genpdf::error::Error> {
-        // Single-line heading height, with a safety margin so the fit check
-        // below stays conservative (overestimating only costs whitespace).
-        let head_h = self.head_style.line_height(&context.font_cache) + Mm::from(2.0);
-        let total_h = head_h + self.image_h;
-        let remaining_h = area.size().height;
-        // Fresh page (allowing float noise): always draw. Otherwise, if the
-        // pair doesn't fit in what's left, draw nothing and take a new page —
-        // the pair is re-rendered there from scratch.
-        if total_h > remaining_h && remaining_h < Mm::from(PAGE_CONTENT_H_MM - 1.0) {
-            return Ok(RenderResult {
-                size: Size::new(0, 0),
-                has_more: true,
-            });
+        area: Area<'a>,
+        _style: Style,
+    ) -> Result<Area<'a>, genpdf::error::Error> {
+        // 1. full-page dark background: a 1x1 px image scaled to the page.
+        //    Drawn first, so the content lands on top of it.
+        //    NOTE: add_image expects the position of the image's BOTTOM edge
+        //    (measured from the area's top) — the image extends upwards.
+        area.add_image(
+            &self.bg,
+            Position::new(Mm::from(0.0), Mm::from(PAGE_H_MM)),
+            Scale::new(PAGE_W_MM * 300.0 / 25.4, PAGE_H_MM * 300.0 / 25.4),
+            Rotation::default(),
+            Some(300.0),
+        );
+        // 2. footer at fixed positions.
+        area.draw_line(
+            vec![
+                Position::new(Mm::from(MARGIN_MM), Mm::from(DIVIDER_Y_MM)),
+                Position::new(Mm::from(PAGE_W_MM - MARGIN_MM), Mm::from(DIVIDER_Y_MM)),
+            ],
+            Style::new().with_color(rgb(DIVIDER_C)),
+        );
+        let label_style = Style::new().with_font_size(8).with_color(rgb(STEEL));
+        let _ = area.print_str(
+            &context.font_cache,
+            Position::new(Mm::from(MARGIN_MM), Mm::from(REFLABEL_Y_MM)),
+            label_style,
+            "YouTube reference",
+        );
+        if let Some(url) = self.urls.get(self.page_idx) {
+            let url_style = Style::new().with_font_size(9).with_color(rgb(URL_INK));
+            let _ = area.print_str(
+                &context.font_cache,
+                Position::new(Mm::from(MARGIN_MM), Mm::from(URL_Y_MM)),
+                url_style,
+                url,
+            );
         }
-        let head_res = self.head.render(context, area.clone(), style)?;
-        if head_res.has_more {
-            return Ok(head_res);
-        }
-        area.add_offset(Position::new(0, head_res.size.height));
-        let img_res = self.image.render(context, area, style)?;
-        Ok(RenderResult {
-            size: head_res.size.stack_vertical(img_res.size),
-            has_more: img_res.has_more,
-        })
+        self.page_idx += 1;
+        // 3. content area for the flow: page margins minus the footer strip.
+        let mut content = area;
+        content.add_margins(Margins::trbl(MARGIN_MM, MARGIN_MM, MARGIN_MM, MARGIN_MM));
+        content.set_height(Mm::from(CONTENT_H_MM));
+        Ok(content)
     }
 }
 
-/// Rendered height of an image in mm, the way genpdf will draw it
-/// (default 300 dpi, scale 1.0), plus a small safety margin.
-fn image_height_mm(path: &Path) -> Mm {
-    image::image_dimensions(path)
-        .map(|(_, h)| Mm::from(h as f64 / 300.0 * 25.4 + 2.0))
-        .unwrap_or(Mm::from(62.0))
+/// Uniform scale fitting a `pw` x `ph` px image into
+/// (`CONTENT_W_MM` x `box_h_mm`), keeping aspect ratio. genpdf draws images
+/// at 300 dpi by default, so mm = px / 300 * 25.4.
+fn frame_scale(pw: u32, ph: u32, box_h_mm: f64) -> f64 {
+    let w_mm = pw as f64 / 300.0 * 25.4;
+    let h_mm = ph as f64 / 300.0 * 25.4;
+    (CONTENT_W_MM / w_mm).min(box_h_mm / h_mm)
+}
+
+/// Frame height budget for a block: shrinks when the subtitle needs more
+/// lines, so header + frame + subtitle always fit the 162 mm content area.
+fn frame_box_h(caption: &str, translated: Option<&str>) -> f64 {
+    let per_line = 95; // ~chars per 11pt line on 267 mm
+    let lines = |t: &str| (t.chars().count() + per_line - 1) / per_line;
+    let mut n = lines(caption).max(1);
+    if let Some(vi) = translated {
+        if vi != caption {
+            n += lines(vi).max(1);
+        }
+    }
+    let text_h_mm = n as f64 * 4.6;
+    (CONTENT_H_MM - HEADER_H_MM - text_h_mm - 10.0).clamp(FRAME_MIN_H_MM, FRAME_MAX_H_MM)
+}
+
+/// Add clickable link annotations over the footer's "YouTube reference" URL
+/// on every page. genpdf/printpdf 0.3 cannot emit link annotations, so they
+/// are added afterwards with lopdf. The footer URL sits at a fixed rect on
+/// every page (see [`FrameDecorator`]), so one constant rect works for all.
+fn add_link_annotations(pdf_path: &Path, urls: &[String]) -> Result<()> {
+    let mut doc = lopdf::Document::load(pdf_path).context("re-opening rendered PDF")?;
+    let pages = doc.get_pages();
+    if pages.len() != urls.len() {
+        // A wrong link is worse than no link: skip rather than mis-link.
+        anyhow::bail!(
+            "page count {} != {} blocks; skipping link annotations",
+            pages.len(),
+            urls.len()
+        );
+    }
+    // Rect of the footer URL in PDF points (origin: bottom-left), generous.
+    let rect = lopdf::Object::Array(vec![
+        lopdf::Object::Real(42.5),
+        lopdf::Object::Real(45.0),
+        lopdf::Object::Real(453.5),
+        lopdf::Object::Real(61.0),
+    ]);
+    for ((_n, page_id), url) in pages.iter().zip(urls.iter()) {
+        let annot_id = doc.new_object_id();
+        let annot = lopdf::dictionary! {
+            "Type" => "Annot",
+            "Subtype" => "Link",
+            "Rect" => rect.clone(),
+            "Border" => lopdf::Object::Array(vec![
+                lopdf::Object::Integer(0),
+                lopdf::Object::Integer(0),
+                lopdf::Object::Integer(0),
+            ]),
+            "A" => lopdf::dictionary! {
+                "S" => "URI",
+                "URI" => lopdf::Object::string_literal(url.clone()),
+            },
+        };
+        doc.objects
+            .insert(annot_id, lopdf::Object::Dictionary(annot));
+        // Fresh genpdf pages never have /Annots, so a straight set is enough.
+        let page = doc
+            .get_object_mut(*page_id)
+            .and_then(|o| o.as_dict_mut())
+            .map_err(|e| anyhow!("page dict: {e}"))?;
+        page.set(
+            "Annots",
+            lopdf::Object::Array(vec![lopdf::Object::Reference(annot_id)]),
+        );
+    }
+    // Save via a temp file so a failure can't corrupt the rendered PDF.
+    let tmp = pdf_path.with_extension("pdf.tmp");
+    doc.save(&tmp)
+        .map_err(|e| anyhow!("saving annotated PDF: {e}"))?;
+    std::fs::rename(&tmp, pdf_path).context("replacing PDF with annotated copy")?;
+    Ok(())
 }
 
 pub fn build_pdf(
@@ -302,64 +417,60 @@ pub fn build_pdf(
     let mut doc = Document::new(font_family);
 
     doc.set_title(&meta.title);
-    let mut decorator = SimplePageDecorator::new();
-    decorator.set_margins(Margins::trbl(18, 15, 18, 15));
-    doc.set_page_decorator(decorator);
+    doc.set_paper_size(Size::new(PAGE_W_MM, PAGE_H_MM));
+    let urls: Vec<String> = blocks.iter().map(|b| b.deep_link.clone()).collect();
+    doc.set_page_decorator(FrameDecorator::new(urls.clone()));
 
-    let title_style = Style::new().bold().with_font_size(20);
-    let ts_style = Style::new().bold().with_font_size(11);
-    let body_style = Style::new().with_font_size(10);
-    let vi_style = Style::new().with_font_size(10);
-    let dim_style = Style::new().with_font_size(9);
+    let title_style = Style::new()
+        .bold()
+        .with_font_size(16)
+        .with_color(rgb(INK));
+    let kicker_style = Style::new().with_font_size(9).with_color(rgb(STEEL));
+    let ts_style = Style::new()
+        .bold()
+        .with_font_size(11)
+        .with_color(rgb(INK));
+    let body_style = Style::new().with_font_size(11).with_color(rgb(INK));
+    let vi_style = Style::new().with_font_size(10).with_color(rgb(STEEL));
 
-    // ---- cover ----
-    doc.push(para(&meta.title, &title_style));
-    doc.push(Break::new(1));
-    doc.push(para(&format!("Kênh: {}", meta.uploader), &dim_style));
-    doc.push(para(&format!("Thời lượng: {}", format_duration(meta.duration_secs)), &dim_style));
-    doc.push(para(&format!("Nguồn: {}", meta.source_url), &dim_style));
-    doc.push(Break::new(1));
-    doc.push(para(
-        &format!(
-            "Tài liệu học tập được tạo tự động từ video — {} đoạn caption, {} hình ảnh.",
-            blocks.len(),
-            blocks.iter().filter(|b| b.image.is_some()).count()
-        ),
-        &body_style,
-    ));
-    doc.push(PageBreak::new());
+    // One caption segment per landscape page: header, big centered frame,
+    // subtitle right below it. The footer (divider + clickable YouTube
+    // reference) is painted at a fixed position by the decorator.
+    for (i, b) in blocks.iter().enumerate() {
+        if i > 0 {
+            doc.push(PageBreak::new());
+        }
+        doc.push(para(&meta.title.to_uppercase(), &title_style));
+        doc.push(para(
+            &format!("ORIGINAL VIDEO FRAME / {}", meta.uploader.to_uppercase()),
+            &kicker_style,
+        ));
+        doc.push(Break::new(1));
 
-    // ---- blocks ----
-    for b in blocks {
-        let mut head = para(&format!("[{}]", format_timestamp(b.timestamp_secs)), &ts_style);
-        head.set_alignment(Alignment::Left);
-
-        match &b.image {
-            Some(img_path) => match Image::from_path(img_path) {
-                // Heading + image travel as one unbreakable unit so a frame
-                // is never torn across a page boundary.
-                Ok(img) => doc.push(BlockHead::new(
-                    head,
-                    ts_style.clone(),
-                    img.with_alignment(Alignment::Center),
-                    image_height_mm(img_path),
-                )),
-                Err(e) => {
-                    doc.push(head);
-                    doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &dim_style));
+        if let Some(img_path) = &b.image {
+            match Image::from_path(img_path) {
+                Ok(img) => {
+                    let (pw, ph) = image::image_dimensions(img_path).unwrap_or((1280, 720));
+                    let translated = b.caption_translated.as_deref();
+                    let s = frame_scale(pw, ph, frame_box_h(&b.caption, translated));
+                    doc.push(
+                        img.with_scale(Scale::new(s, s))
+                            .with_alignment(Alignment::Center),
+                    );
                 }
-            },
-            None => doc.push(head),
+                Err(e) => doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &vi_style)),
+            }
         }
 
-        doc.push(para(&b.caption, &body_style));
+        let mut sub = Paragraph::new("");
+        sub.push_styled(format!("[{}]  ", format_timestamp(b.timestamp_secs)), ts_style.clone());
+        sub.push_styled(b.caption.clone(), body_style.clone());
+        doc.push(sub);
         if let Some(vi) = &b.caption_translated {
             if vi != &b.caption {
                 doc.push(para(&format!("VI: {vi}"), &vi_style));
             }
         }
-        doc.push(para(&format!("Xem tại: {}", b.deep_link), &dim_style));
-        doc.push(Break::new(1));
     }
 
     if let Some(parent) = out.parent() {
@@ -367,5 +478,10 @@ pub fn build_pdf(
     }
     doc.render_to_file(out)
         .with_context(|| format!("writing PDF to {}", out.display()))?;
+
+    // Clickable "YouTube reference" links: a nicety, never fatal.
+    if let Err(e) = add_link_annotations(out, &urls) {
+        eprintln!("warning: could not add PDF link annotations: {e:#}");
+    }
     Ok(())
 }
