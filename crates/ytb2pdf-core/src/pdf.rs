@@ -86,6 +86,27 @@ pub struct PdfBlock {
     pub caption: String,
     pub caption_translated: Option<String>,
     pub image: Option<PathBuf>,
+    /// True when this block merges several consecutive segments that share
+    /// the same visual scene. The caption is then a flowing paragraph
+    /// (rendered without per-segment timestamps).
+    pub merged: bool,
+}
+
+/// Merge several caption texts into one flowing paragraph.
+pub fn merge_captions<'a>(parts: impl Iterator<Item = &'a str>) -> String {
+    let mut out = String::new();
+    for p in parts {
+        // collapse internal whitespace/newlines from the subtitle source
+        let t: String = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        if t.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(&t);
+    }
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -502,10 +523,15 @@ pub fn build_pdf(
         doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
 
         let mut sub = Paragraph::new("");
-        sub.push_styled(
-            format!("[{}]  {}", format_timestamp(b.timestamp_secs), b.caption),
-            caption_style.clone(),
-        );
+        if b.merged {
+            // Scene narration: one flowing paragraph, no per-segment times.
+            sub.push_styled(b.caption.clone(), caption_style.clone());
+        } else {
+            sub.push_styled(
+                format!("[{}]  {}", format_timestamp(b.timestamp_secs), b.caption),
+                caption_style.clone(),
+            );
+        }
         doc.push(sub);
         if let Some(vi) = &b.caption_translated {
             if vi != &b.caption {
@@ -525,4 +551,20 @@ pub fn build_pdf(
         eprintln!("warning: could not add PDF link annotations: {e:#}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_captions_joins_and_cleans() {
+        let parts = vec!["Hello  world.", "  This is\na test. ", "", "Bye."];
+        assert_eq!(
+            merge_captions(parts.into_iter()),
+            "Hello world. This is a test. Bye."
+        );
+        let empty: Vec<&str> = vec![];
+        assert_eq!(merge_captions(empty.into_iter()), "");
+    }
 }
