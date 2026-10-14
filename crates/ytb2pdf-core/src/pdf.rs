@@ -1,9 +1,11 @@
 //! PDF assembly with `genpdf` (pure-Rust, built on printpdf).
 //!
 //! Layout ("video frame" style): landscape A4, one caption segment per page —
-//! video title header, the frame big and centered, the subtitle right below
-//! it, and a fixed footer with a clickable "YouTube reference" link.
-//! Dark navy palette, in the spirit of the app's FilmCraft dark theme.
+//! title + kicker pinned to the top, the frame full-width right below them,
+//! the subtitle under the frame, and a fixed footer with a clickable
+//! "YouTube reference" link. Geometry, typography, and palette follow the
+//! reference layout `EDA_2_Page_Layout_Test.pdf`: deep navy page, white bold
+//! captions, steel-blue accents.
 //!
 //! Vietnamese text needs a TTF with Vietnamese glyphs (the built-in PDF
 //! fonts only cover WinAnsi). We bundle Be Vietnam Pro (OFL) in
@@ -22,33 +24,53 @@ use genpdf::{
 use std::path::{Path, PathBuf};
 
 // ---- landscape A4 "video frame" layout (all mm) ----
+// Fixed geometry measured from the reference `EDA_2_Page_Layout_Test.pdf`
+// (841.89 x 595.28 pt pages; mm = pt * 25.4 / 72).
 const PAGE_W_MM: f64 = 297.0;
 const PAGE_H_MM: f64 = 210.0;
-const MARGIN_MM: f64 = 15.0;
-/// Footer strip (divider + "YouTube reference" + URL) reserved at the bottom.
-const FOOTER_H_MM: f64 = 18.0;
-const CONTENT_W_MM: f64 = PAGE_W_MM - 2.0 * MARGIN_MM; // 267
-const CONTENT_H_MM: f64 = PAGE_H_MM - 2.0 * MARGIN_MM - FOOTER_H_MM; // 162
-/// Header (title + kicker + gap) budget inside the content area.
-const HEADER_H_MM: f64 = 16.0;
-/// Max frame height; shrinks when the subtitle needs more lines.
-const FRAME_MAX_H_MM: f64 = 120.0;
-const FRAME_MIN_H_MM: f64 = 40.0;
-
-// ---- palette: deep navy page, steel-blue accents ----
-const BG: (u8, u8, u8) = (0x0B, 0x12, 0x20);
-const INK: (u8, u8, u8) = (0xF2, 0xF5, 0xF9);
-const STEEL: (u8, u8, u8) = (0x7A, 0x8B, 0xA8);
-const URL_INK: (u8, u8, u8) = (0xA0, 0xAF, 0xC3);
-const DIVIDER_C: (u8, u8, u8) = (0x2D, 0x3C, 0x5A);
-
+/// Left edge of the pinned title and the frame (38 pt).
+const FRAME_X_MM: f64 = 13.4;
+/// Left edge of the caption and the footer texts (40 pt).
+const TEXT_X_MM: f64 = 14.1;
+/// Baselines of the pinned header lines, from the top of the page.
+const TITLE_BASE_MM: f64 = 13.5;
+const KICKER_BASE_MM: f64 = 19.0;
+/// The frame band: full width, top right below the kicker (68 pt).
+const FRAME_TOP_MM: f64 = 24.0;
+const FRAME_W_MM: f64 = 270.2; // 766 pt
+/// Full-width 16:9 height (431 pt); the frame only shrinks to make room for
+/// long captions.
+const FRAME_MAX_H_MM: f64 = 152.0;
+const FRAME_MIN_H_MM: f64 = 60.0;
+/// Gap between the frame's bottom edge and the caption paragraph.
+const CAPTION_GAP_MM: f64 = 4.0;
+/// The flow area (frame + captions) ends a hair above the footer divider.
+const FLOW_BOTTOM_MM: f64 = 188.5;
 // ---- footer geometry, measured from the top of the page ----
-const DIVIDER_Y_MM: f64 = PAGE_H_MM - MARGIN_MM - FOOTER_H_MM + 3.0; // 180
-const REFLABEL_Y_MM: f64 = DIVIDER_Y_MM + 5.0; // 185
-const URL_Y_MM: f64 = DIVIDER_Y_MM + 10.5; // 190.5
+const DIVIDER_Y_MM: f64 = 190.8; // 541 pt
+const DIVIDER_X1_MM: f64 = 282.9; // 802 pt
+const LABEL_BASE_MM: f64 = 197.4;
+const URL_BASE_MM: f64 = 202.8;
+
+// ---- palette: deep navy page, white ink, steel-blue accents ----
+const BG: (u8, u8, u8) = (0x0E, 0x13, 0x1F);
+const TITLE_C: (u8, u8, u8) = (0xF5, 0xF7, 0xFF);
+const CAPTION_C: (u8, u8, u8) = (0xF2, 0xF5, 0xFF);
+const STEEL: (u8, u8, u8) = (0x8F, 0xAD, 0xD1);
+const LABEL_C: (u8, u8, u8) = (0x8A, 0xB5, 0xE8);
+const URL_C: (u8, u8, u8) = (0xBF, 0xD4, 0xF0);
+const DIVIDER_C: (u8, u8, u8) = (0x40, 0x57, 0x75);
 
 fn rgb(c: (u8, u8, u8)) -> Color {
     Color::Rgb(c.0, c.1, c.2)
+}
+
+/// `print_str` places the baseline one glyph-height below the given y, and
+/// the glyph height is 1.265 em for Be Vietnam Pro (hhea ascent 1000,
+/// descent -265, upm 1000). Convert a target baseline (mm from the top of
+/// the page) into the position genpdf expects.
+fn baseline_y(baseline_mm: f64, size_pt: f64) -> Mm {
+    Mm::from(baseline_mm - 1.265 * size_pt * 25.4 / 72.0)
 }
 
 pub struct PdfMeta {
@@ -137,7 +159,7 @@ fn load_font_family(opts: &PdfOptions) -> Result<genpdf::fonts::FontFamily<genpd
     use genpdf::fonts::{FontData, FontFamily};
 
     // 1. explicit override  2. bundled Be Vietnam Pro  3. system fonts
-    let mut dirs: Vec<PathBuf> = opts.font_dir.clone().into_iter().collect();
+    let dirs: Vec<PathBuf> = opts.font_dir.clone().into_iter().collect();
     let names = font_names(&opts.font_name);
     for dir in &dirs {
         for name in &names {
@@ -250,24 +272,28 @@ fn para(text: &str, style: &Style) -> Paragraph {
     Paragraph::new(StyledString::new(text, style.clone()))
 }
 
-/// Page decorator: paints the dark navy background, draws the fixed footer
-/// (divider + "YouTube reference" + per-page URL), then hands the remaining
-/// content area (margins minus the footer strip) to the flow layout.
+/// Page decorator: paints the navy background, the pinned header (title +
+/// kicker) and the fixed footer (divider + "YouTube reference" + per-page
+/// URL), then hands the frame band between them to the flow layout.
 ///
 /// The footer URL sits at a fixed rect on every page, which is what
 /// [`add_link_annotations`] targets for the clickable links.
 struct FrameDecorator {
     bg: image023::DynamicImage,
+    title: String,
+    kicker: String,
     urls: Vec<String>,
     page_idx: usize,
 }
 
 impl FrameDecorator {
-    fn new(urls: Vec<String>) -> Self {
+    fn new(meta: &PdfMeta, urls: Vec<String>) -> Self {
         let mut px = image023::RgbImage::new(1, 1);
         px.put_pixel(0, 0, image023::Rgb([BG.0, BG.1, BG.2]));
         Self {
             bg: image023::DynamicImage::ImageRgb8(px),
+            title: meta.title.to_uppercase(),
+            kicker: format!("ORIGINAL VIDEO FRAME  /  {}", meta.uploader.to_uppercase()),
             urls,
             page_idx: 0,
         }
@@ -292,52 +318,73 @@ impl PageDecorator for FrameDecorator {
             Rotation::default(),
             Some(300.0),
         );
-        // 2. footer at fixed positions.
+        // 2. pinned header: title + kicker.
+        let title_style = Style::new().bold().with_font_size(16).with_color(rgb(TITLE_C));
+        let _ = area.print_str(
+            &context.font_cache,
+            Position::new(Mm::from(FRAME_X_MM), baseline_y(TITLE_BASE_MM, 16.0)),
+            title_style,
+            &self.title,
+        );
+        let kicker_style = Style::new().with_font_size(8).with_color(rgb(STEEL));
+        let _ = area.print_str(
+            &context.font_cache,
+            Position::new(Mm::from(FRAME_X_MM), baseline_y(KICKER_BASE_MM, 8.0)),
+            kicker_style,
+            &self.kicker,
+        );
+        // 3. footer at fixed positions.
         area.draw_line(
             vec![
-                Position::new(Mm::from(MARGIN_MM), Mm::from(DIVIDER_Y_MM)),
-                Position::new(Mm::from(PAGE_W_MM - MARGIN_MM), Mm::from(DIVIDER_Y_MM)),
+                Position::new(Mm::from(TEXT_X_MM), Mm::from(DIVIDER_Y_MM)),
+                Position::new(Mm::from(DIVIDER_X1_MM), Mm::from(DIVIDER_Y_MM)),
             ],
             Style::new().with_color(rgb(DIVIDER_C)),
         );
-        let label_style = Style::new().with_font_size(8).with_color(rgb(STEEL));
+        let label_style = Style::new().bold().with_font_size(8).with_color(rgb(LABEL_C));
         let _ = area.print_str(
             &context.font_cache,
-            Position::new(Mm::from(MARGIN_MM), Mm::from(REFLABEL_Y_MM)),
+            Position::new(Mm::from(TEXT_X_MM), baseline_y(LABEL_BASE_MM, 8.0)),
             label_style,
             "YouTube reference",
         );
         if let Some(url) = self.urls.get(self.page_idx) {
-            let url_style = Style::new().with_font_size(9).with_color(rgb(URL_INK));
+            let url_style = Style::new().with_font_size(9).with_color(rgb(URL_C));
             let _ = area.print_str(
                 &context.font_cache,
-                Position::new(Mm::from(MARGIN_MM), Mm::from(URL_Y_MM)),
+                Position::new(Mm::from(TEXT_X_MM), baseline_y(URL_BASE_MM, 9.0)),
                 url_style,
                 url,
             );
         }
         self.page_idx += 1;
-        // 3. content area for the flow: page margins minus the footer strip.
+        // 4. flow area for frame + captions: the band between header and
+        //    footer.
         let mut content = area;
-        content.add_margins(Margins::trbl(MARGIN_MM, MARGIN_MM, MARGIN_MM, MARGIN_MM));
-        content.set_height(Mm::from(CONTENT_H_MM));
+        content.add_margins(Margins::trbl(
+            Mm::from(FRAME_TOP_MM),
+            Mm::from(PAGE_W_MM - FRAME_X_MM - FRAME_W_MM),
+            Mm::from(0.0),
+            Mm::from(FRAME_X_MM),
+        ));
+        content.set_height(Mm::from(FLOW_BOTTOM_MM - FRAME_TOP_MM));
         Ok(content)
     }
 }
 
-/// Uniform scale fitting a `pw` x `ph` px image into
-/// (`CONTENT_W_MM` x `box_h_mm`), keeping aspect ratio. genpdf draws images
+/// Uniform scale fitting a `pw` x `ph` px frame into
+/// (`FRAME_W_MM` x `box_h_mm`), keeping aspect ratio. genpdf draws images
 /// at 300 dpi by default, so mm = px / 300 * 25.4.
 fn frame_scale(pw: u32, ph: u32, box_h_mm: f64) -> f64 {
     let w_mm = pw as f64 / 300.0 * 25.4;
     let h_mm = ph as f64 / 300.0 * 25.4;
-    (CONTENT_W_MM / w_mm).min(box_h_mm / h_mm)
+    (FRAME_W_MM / w_mm).min(box_h_mm / h_mm)
 }
 
-/// Frame height budget for a block: shrinks when the subtitle needs more
-/// lines, so header + frame + subtitle always fit the 162 mm content area.
+/// Frame height budget: the full 16:9 height, shrunk only when a long
+/// caption (+ translation) needs the room above the footer.
 fn frame_box_h(caption: &str, translated: Option<&str>) -> f64 {
-    let per_line = 95; // ~chars per 11pt line on 267 mm
+    let per_line = 125; // conservative estimate for 11 pt Be Vietnam Pro over 270 mm
     let lines = |t: &str| (t.chars().count() + per_line - 1) / per_line;
     let mut n = lines(caption).max(1);
     if let Some(vi) = translated {
@@ -345,8 +392,8 @@ fn frame_box_h(caption: &str, translated: Option<&str>) -> f64 {
             n += lines(vi).max(1);
         }
     }
-    let text_h_mm = n as f64 * 4.6;
-    (CONTENT_H_MM - HEADER_H_MM - text_h_mm - 10.0).clamp(FRAME_MIN_H_MM, FRAME_MAX_H_MM)
+    let text_h_mm = n as f64 * 5.6 + CAPTION_GAP_MM;
+    (FLOW_BOTTOM_MM - FRAME_TOP_MM - text_h_mm).clamp(FRAME_MIN_H_MM, FRAME_MAX_H_MM)
 }
 
 /// Add clickable link annotations over the footer's "YouTube reference" URL
@@ -365,11 +412,13 @@ fn add_link_annotations(pdf_path: &Path, urls: &[String]) -> Result<()> {
         );
     }
     // Rect of the footer URL in PDF points (origin: bottom-left), generous.
+    // The URL baseline sits at URL_BASE_MM (202.8 mm from the top), i.e.
+    // ~20.5 pt from the bottom of the 595.28 pt page.
     let rect = lopdf::Object::Array(vec![
-        lopdf::Object::Real(42.5),
-        lopdf::Object::Real(45.0),
-        lopdf::Object::Real(453.5),
-        lopdf::Object::Real(61.0),
+        lopdf::Object::Real(38.0),
+        lopdf::Object::Real(12.0),
+        lopdf::Object::Real(806.0),
+        lopdf::Object::Real(30.0),
     ]);
     for ((_n, page_id), url) in pages.iter().zip(urls.iter()) {
         let annot_id = doc.new_object_id();
@@ -419,34 +468,23 @@ pub fn build_pdf(
     doc.set_title(&meta.title);
     doc.set_paper_size(Size::new(PAGE_W_MM, PAGE_H_MM));
     let urls: Vec<String> = blocks.iter().map(|b| b.deep_link.clone()).collect();
-    doc.set_page_decorator(FrameDecorator::new(urls.clone()));
+    doc.set_page_decorator(FrameDecorator::new(meta, urls.clone()));
 
-    let title_style = Style::new()
-        .bold()
-        .with_font_size(16)
-        .with_color(rgb(INK));
-    let kicker_style = Style::new().with_font_size(9).with_color(rgb(STEEL));
-    let ts_style = Style::new()
+    let caption_style = Style::new()
         .bold()
         .with_font_size(11)
-        .with_color(rgb(INK));
-    let body_style = Style::new().with_font_size(11).with_color(rgb(INK));
+        .with_color(rgb(CAPTION_C));
     let vi_style = Style::new().with_font_size(10).with_color(rgb(STEEL));
 
-    // One caption segment per landscape page: header, big centered frame,
-    // subtitle right below it. The footer (divider + clickable YouTube
-    // reference) is painted at a fixed position by the decorator.
+    /// Height of one `Break` line with genpdf's default 12 pt style (mm).
+    const BREAK_LINE_MM: f64 = 1.265 * 12.0 * 25.4 / 72.0;
+
+    // One caption segment per landscape page: full-width frame, subtitle
+    // right below it. Header and footer are pinned by the decorator.
     for (i, b) in blocks.iter().enumerate() {
         if i > 0 {
             doc.push(PageBreak::new());
         }
-        doc.push(para(&meta.title.to_uppercase(), &title_style));
-        doc.push(para(
-            &format!("ORIGINAL VIDEO FRAME / {}", meta.uploader.to_uppercase()),
-            &kicker_style,
-        ));
-        doc.push(Break::new(1));
-
         if let Some(img_path) = &b.image {
             match Image::from_path(img_path) {
                 Ok(img) => {
@@ -461,10 +499,13 @@ pub fn build_pdf(
                 Err(e) => doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &vi_style)),
             }
         }
+        doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
 
         let mut sub = Paragraph::new("");
-        sub.push_styled(format!("[{}]  ", format_timestamp(b.timestamp_secs)), ts_style.clone());
-        sub.push_styled(b.caption.clone(), body_style.clone());
+        sub.push_styled(
+            format!("[{}]  {}", format_timestamp(b.timestamp_secs), b.caption),
+            caption_style.clone(),
+        );
         doc.push(sub);
         if let Some(vi) = &b.caption_translated {
             if vi != &b.caption {
