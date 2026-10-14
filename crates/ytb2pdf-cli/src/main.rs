@@ -9,10 +9,10 @@
 
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
-use ytb2pdf_core::{run_pipeline, whisper::WhisperModel, PipelineConfig, PipelineEvent};
+use ytb2pdf_core::{run_pipeline, v2, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>] [--v2]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -89,6 +89,10 @@ fn main() -> Result<()> {
                     .map_err(|_| anyhow!("--jobs must be a positive integer"))?;
                 i += 2;
             }
+            "--v2" => {
+                cfg.v2 = true;
+                i += 1;
+            }
             other => {
                 eprintln!("unknown flag: {other}\n{}", usage());
                 std::process::exit(2);
@@ -102,39 +106,45 @@ fn main() -> Result<()> {
         }
     }
 
-    run_pipeline(&cfg, &|ev| {
-        if json_out {
-            // One JSON object per line — easy for any agent to parse.
-            let v = match ev {
-                PipelineEvent::Stage(s) => {
-                    serde_json::json!({"type": "stage", "stage": s})
-                }
-                PipelineEvent::Progress { done, total } => {
-                    serde_json::json!({"type": "progress", "done": done, "total": total})
-                }
-                PipelineEvent::Log(m) => {
-                    serde_json::json!({"type": "log", "message": m})
-                }
-                PipelineEvent::Done(p) => {
-                    serde_json::json!({"type": "done", "pdf": p.to_string_lossy()})
-                }
-            };
-            println!("{}", v);
-            return;
-        }
-        match ev {
-            PipelineEvent::Stage(s) => println!("\n▶ {s}"),
-            PipelineEvent::Progress { done, total } => {
-                print!("\r  {done}/{total}");
-                use std::io::Write;
-                let _ = std::io::stdout().flush();
-                if done == total {
-                    println!();
-                }
-            }
-            PipelineEvent::Log(m) => println!("  {m}"),
-            PipelineEvent::Done(p) => println!("\n🎉 Xong! PDF ở: {}", p.display()),
-        }
-    })?;
+    if cfg.v2 {
+        v2::pipeline::run_v2_pipeline(&cfg, &|ev| emit_event(ev, json_out))?;
+    } else {
+        run_pipeline(&cfg, &|ev| emit_event(ev, json_out))?;
+    }
     Ok(())
+}
+
+/// Emit a pipeline event as JSON (one object per line) or human-readable text.
+fn emit_event(ev: PipelineEvent, json_out: bool) {
+    if json_out {
+        let v = match ev {
+            PipelineEvent::Stage(s) => {
+                serde_json::json!({"type": "stage", "stage": s})
+            }
+            PipelineEvent::Progress { done, total } => {
+                serde_json::json!({"type": "progress", "done": done, "total": total})
+            }
+            PipelineEvent::Log(m) => {
+                serde_json::json!({"type": "log", "message": m})
+            }
+            PipelineEvent::Done(p) => {
+                serde_json::json!({"type": "done", "pdf": p.to_string_lossy()})
+            }
+        };
+        println!("{}", v);
+        return;
+    }
+    match ev {
+        PipelineEvent::Stage(s) => println!("\n▶ {s}"),
+        PipelineEvent::Progress { done, total } => {
+            print!("\r  {done}/{total}");
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            if done == total {
+                println!();
+            }
+        }
+        PipelineEvent::Log(m) => println!("  {m}"),
+        PipelineEvent::Done(p) => println!("\n🎉 Xong! PDF ở: {}", p.display()),
+    }
 }
