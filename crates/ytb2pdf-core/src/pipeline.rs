@@ -201,25 +201,66 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     emit(PipelineEvent::Stage("Dựng PDF"));
     // Each segment shows the latest kept frame at or before its midpoint
     // (slides stay on screen while the speaker keeps talking).
-    let mut blocks = Vec::with_capacity(segments.len());
-    let mut ki = 0usize;
-    for (seg, vi) in segments.iter().zip(translated.iter()) {
-        while ki + 1 < kept.len() && kept[ki + 1].at_secs <= seg.midpoint() + 0.5 {
-            ki += 1;
+    let mut seg_frame: Vec<Option<usize>> = Vec::with_capacity(segments.len());
+    {
+        let mut ki = 0usize;
+        for seg in segments.iter() {
+            while ki + 1 < kept.len() && kept[ki + 1].at_secs <= seg.midpoint() + 0.5 {
+                ki += 1;
+            }
+            seg_frame.push(
+                if kept
+                    .get(ki)
+                    .map(|f| f.at_secs <= seg.midpoint() + 0.5)
+                    .unwrap_or(false)
+                {
+                    Some(ki)
+                } else {
+                    None
+                },
+            );
         }
-        let image = if kept.get(ki).map(|f| f.at_secs <= seg.midpoint() + 0.5).unwrap_or(false) {
-            Some(kept[ki].path.clone())
-        } else {
+    }
+
+    // Compact: consecutive segments sharing the same kept frame (i.e. the
+    // same on-screen scene, >90% similar by dHash) become ONE block with a
+    // single image and the merged narration as a flowing paragraph.
+    let mut blocks = Vec::new();
+    let mut i = 0;
+    while i < segments.len() {
+        let mut j = i;
+        while j + 1 < segments.len() && seg_frame[j + 1] == seg_frame[i] {
+            j += 1;
+        }
+        let first = &segments[i];
+        let caption = pdf::merge_captions(segments[i..=j].iter().map(|s| s.text.as_str()));
+        let vi_merged = pdf::merge_captions(
+            translated[i..=j]
+                .iter()
+                .filter_map(|o| o.as_deref()),
+        );
+        let caption_translated = if vi_merged.is_empty() || vi_merged == caption {
             None
+        } else {
+            Some(vi_merged)
         };
         blocks.push(PdfBlock {
-            timestamp_secs: seg.start,
-            deep_link: format!("https://youtu.be/{}?t={}s", video.id, seg.start as u64),
-            caption: seg.text.clone(),
-            caption_translated: vi.clone(),
-            image,
+            timestamp_secs: first.start,
+            deep_link: format!("https://youtu.be/{}?t={}s", video.id, first.start as u64),
+            caption,
+            caption_translated,
+            image: seg_frame[i]
+                .and_then(|k| kept.get(k))
+                .map(|f| f.path.clone()),
+            merged: j > i,
         });
+        i = j + 1;
     }
+    log(format!(
+        "Gộp {} đoạn caption thành {} scene",
+        segments.len(),
+        blocks.len()
+    ));
 
     let pdf_meta = PdfMeta {
         title: meta.title.clone(),
