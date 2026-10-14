@@ -44,6 +44,9 @@ pub struct PipelineConfig {
     /// Parallel ffmpeg workers for frame capture (default: CPU count).
     /// Higher = faster on many-core machines; 2-4 is plenty.
     pub jobs: usize,
+    /// Use Architecture V2 (low-res detection, high-res extraction).
+    /// Best for long videos where download bandwidth is the bottleneck.
+    pub v2: bool,
 }
 
 impl Default for PipelineConfig {
@@ -64,6 +67,7 @@ impl Default for PipelineConfig {
             jobs: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(2),
+            v2: false,
         }
     }
 }
