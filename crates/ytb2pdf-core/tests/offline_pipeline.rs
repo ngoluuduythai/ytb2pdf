@@ -49,7 +49,7 @@ fn offline_video_to_pdf() {
     // frames at segment midpoints: t=1,2 (red) and t=4,5 (blue)
     let stamps: Vec<f64> = segs.iter().map(|s| s.midpoint()).collect();
     let frame_dir = dir.join("frames");
-    let frames = capture_frames(&video, &stamps, &frame_dir, &|_, _| {}).unwrap();
+    let frames = capture_frames(&video, &stamps, &frame_dir, 2, &|_, _| {}).unwrap();
     assert_eq!(frames.len(), 4);
 
     // dedupe: red+red -> 1, blue+blue -> 1
