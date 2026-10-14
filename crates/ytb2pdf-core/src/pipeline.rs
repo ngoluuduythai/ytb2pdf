@@ -38,6 +38,12 @@ pub struct PipelineConfig {
     pub out_pdf: PathBuf,
     /// dHash hamming-distance threshold for frame dedupe (default 6).
     pub dhash_threshold: u32,
+    /// Max video height for download (default 720). Use 480 for very long
+    /// videos to keep the download smaller and survive YouTube throttling.
+    pub max_height: u32,
+    /// Parallel ffmpeg workers for frame capture (default: CPU count).
+    /// Higher = faster on many-core machines; 2-4 is plenty.
+    pub jobs: usize,
 }
 
 impl Default for PipelineConfig {
@@ -54,6 +60,10 @@ impl Default for PipelineConfig {
             work_dir: PathBuf::from("ytb2pdf-work"),
             out_pdf: PathBuf::from("output.pdf"),
             dhash_threshold: 6,
+            max_height: 720,
+            jobs: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(2),
         }
     }
 }
@@ -66,7 +76,7 @@ pub enum PipelineEvent {
     Done(PathBuf),
 }
 
-pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Result<PathBuf> {
+pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<PathBuf> {
     let log = |s: String| emit(PipelineEvent::Log(s));
 
     emit(PipelineEvent::Stage("Phân tích URL"));
@@ -82,6 +92,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     let ytdlp = YtDlp {
         cookies_file: cfg.cookies_file.clone(),
         cookies_from_browser: cfg.cookies_from_browser.clone(),
+        max_height: cfg.max_height,
         retries: 5,
     };
 
@@ -184,7 +195,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     emit(PipelineEvent::Stage("Chụp frame theo caption"));
     let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
     let total = timestamps.len();
-    let frames = capture_frames(&video_path, &timestamps, &frame_dir, &|done, _| {
+    let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
         emit(PipelineEvent::Progress { done, total });
     })?;
 
