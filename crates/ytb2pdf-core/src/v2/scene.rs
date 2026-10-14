@@ -44,8 +44,10 @@ pub fn detect_scenes(proxy: &Path, threshold: f32, sample_interval: f64) -> Resu
         let duration = probe_duration(proxy)?;
         let mut t = 0.0;
         while t < duration {
-            // Skip samples too close to a filter-detected scene (< 2s).
-            let near = scenes.iter().any(|s| (s.time - t).abs() < 2.0);
+            // Only sample in gaps: skip if within 15s of a filter-detected
+            // scene. This keeps sampling as a fallback for gradual changes
+            // without flooding the segment planner.
+            let near = scenes.iter().any(|s| (s.time - t).abs() < 15.0);
             if !near {
                 scenes.push(Scene {
                     time: t,
