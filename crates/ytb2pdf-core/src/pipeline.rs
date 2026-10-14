@@ -192,9 +192,10 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &dyn Fn(PipelineEvent)) -> Resul
     let kept = dedupe_frames(frames, cfg.dhash_threshold);
     log(format!("Giữ {} / {} frame", kept.len(), total));
 
-    // shrink kept frames so the PDF stays small
+    // shrink kept frames so the PDF stays reasonable; 1920px stays crisp
+    // when rendered large on the landscape pages
     for f in &kept {
-        let _ = pdf::shrink_image(&f.path, 1280);
+        let _ = pdf::shrink_image(&f.path, 1920);
     }
 
     emit(PipelineEvent::Stage("Dựng PDF"));
