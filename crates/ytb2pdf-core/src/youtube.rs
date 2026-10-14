@@ -75,6 +75,9 @@ pub struct YtDlp {
     /// e.g. `Some("chrome")` — passes `--cookies-from-browser chrome`.
     /// Fallback when no cookie file is given.
     pub cookies_from_browser: Option<String>,
+    /// Max video height for downloads (e.g. 720). Lower (480) for very long
+    /// videos where 720p would be huge and YouTube throttles the transfer.
+    pub max_height: u32,
     /// Extra seconds of backoff is handled by yt-dlp itself (`--retries`).
     pub retries: u32,
 }
@@ -84,6 +87,7 @@ impl YtDlp {
         Self {
             cookies_file: None,
             cookies_from_browser: None,
+            max_height: 720,
             retries: 5,
         }
     }
@@ -240,13 +244,24 @@ impl YtDlp {
         ))
     }
 
-    /// Download the video itself (720p ceiling is plenty for frame grabs).
+    /// Download the video itself. `max_height` caps the resolution (720p
+    /// default is plenty for frame grabs; 480p for very long videos).
+    /// Uses patient retries — YouTube throttles datacenter IPs hard.
     pub fn download_video(&self, video: &VideoRef, out_path: &Path) -> Result<PathBuf> {
         let mut cmd = self.base_cmd();
+        let h = self.max_height;
         cmd.arg("-f")
-            .arg("bv*[height<=720]+ba/b[height<=720]/b")
+            .arg(format!("bv*[height<={h}]+ba/b[height<={h}]/b"))
             .arg("--merge-output-format")
             .arg("mp4")
+            // Be patient through YouTube's throttling: many retries with
+            // backoff, otherwise long videos die with "read timed out".
+            .arg("--retries")
+            .arg("20")
+            .arg("--fragment-retries")
+            .arg("20")
+            .arg("--retry-sleep")
+            .arg("30")
             .arg("--output")
             .arg(out_path)
             .arg(&video.url);
