@@ -91,6 +91,11 @@ impl YtDlp {
     fn base_cmd(&self) -> Command {
         let mut cmd = Command::new("yt-dlp");
         cmd.arg("--no-warnings");
+        // YouTube's `n` challenge needs a JS runtime + the EJS solver script.
+        // Without this, downloads fail with "n challenge solving failed" /
+        // "The page needs to be reloaded" even with valid cookies.
+        // (Deno must be on PATH; the app bundles it.)
+        cmd.arg("--remote-components").arg("ejs:github");
         if let Some(f) = &self.cookies_file {
             cmd.arg("--cookies").arg(f);
         } else if let Some(browser) = &self.cookies_from_browser {
