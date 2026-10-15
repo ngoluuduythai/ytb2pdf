@@ -90,3 +90,35 @@ fn offline_video_to_pdf() {
     // silence unused-mut warning path
     let _ = &mut segs;
 }
+
+
+/// Exercise the public source-aware pipeline without yt-dlp or network access.
+#[test]
+fn local_video_pipeline_with_srt_produces_pdf() {
+    use ytb2pdf_core::{run_pipeline, PipelineConfig};
+
+    let dir = workdir().join("local-video-adapter");
+    std::fs::create_dir_all(&dir).unwrap();
+    let video = dir.join("lecture.mp4");
+    let subtitles = dir.join("lecture.srt");
+    let pdf = dir.join("lecture.pdf");
+    make_test_video(&video);
+    std::fs::write(&subtitles, SRT).unwrap();
+
+    let mut cfg = PipelineConfig::default();
+    cfg.local_file = Some(video);
+    cfg.work_dir = dir.join("scratch");
+    cfg.out_pdf = pdf.clone();
+    // No explicit transcript: verify same-basename sidecar discovery.
+    run_pipeline(&cfg, &|_| {}).expect("local file pipeline should succeed offline");
+
+    assert!(pdf.is_file());
+    assert!(std::fs::metadata(&pdf).unwrap().len() > 10_000);
+    // Local PDFs should not inject fake YouTube link annotations.
+    let document = lopdf::Document::load(&pdf).unwrap();
+    for (_, id) in document.get_pages() {
+        let page = document.get_object(id).unwrap().as_dict().unwrap();
+        assert!(page.get(b"Annots").is_err(), "local PDF must have no URL annotations");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
