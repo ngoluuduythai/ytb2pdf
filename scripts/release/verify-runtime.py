@@ -21,6 +21,10 @@ for path in root.rglob("*"):
         dependency = line.strip().split(" (", 1)[0]
         if dependency in ids or dependency.endswith(':'):
             continue
+        # Some standalone binaries expose their own install name in -L, while
+        # -D omits it (notably on some universal Mach-O layouts).
+        if dependency.startswith(('/', '@')) and Path(dependency).resolve() == path.resolve():
+            continue
         if dependency.startswith("/") and not dependency.startswith(("/usr/lib/", "/System/Library/")):
             raise SystemExit(f"Non-relocatable dependency in {path}: {dependency}")
         if dependency.startswith("@rpath/"):
