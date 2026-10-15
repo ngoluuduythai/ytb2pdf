@@ -114,11 +114,13 @@ pub struct PdfOptions {
     /// Directory containing `<font_name>.ttf` (+ optional `-Bold.ttf`).
     pub font_dir: Option<PathBuf>,
     pub font_name: String,
+    /// Skip images, captions only. For lightweight mobile reading.
+    pub text_only: bool,
 }
 
 impl Default for PdfOptions {
     fn default() -> Self {
-        Self { font_dir: None, font_name: "DejaVuSans".to_string() }
+        Self { font_dir: None, font_name: "DejaVuSans".to_string(), text_only: false }
     }
 }
 
@@ -489,7 +491,66 @@ fn add_link_annotations(pdf_path: &Path, urls: &[Option<String>]) -> Result<()> 
     Ok(())
 }
 
+/// Build a PDF from blocks. For very long videos (thousands of pages),
+/// genpdf holds everything in memory, so we build in chunks of 1500 pages
+/// and merge with pdfunite to avoid OOM.
 pub fn build_pdf(
+    meta: &PdfMeta,
+    blocks: &[PdfBlock],
+    opts: &PdfOptions,
+    out: &Path,
+) -> Result<()> {
+    const CHUNK: usize = 1500;
+    if blocks.len() <= CHUNK {
+        return build_pdf_single(meta, blocks, opts, out);
+    }
+    let tmp = out.with_extension("chunk_tmp");
+    let mut chunk_files = Vec::new();
+    for (ci, chunk) in blocks.chunks(CHUNK).enumerate() {
+        let cf = tmp.with_file_name(format!(
+            "{}_chunk{ci:03}.pdf",
+            out.file_stem().and_then(|s| s.to_str()).unwrap_or("out")
+        ));
+        // Each chunk gets its own decorator with the right URL offset so
+        // footer links stay correct after merging.
+        build_pdf_single(meta, chunk, opts, &cf)?;
+        chunk_files.push(cf);
+    }
+    merge_pdfs(&chunk_files, out)?;
+    for cf in chunk_files {
+        let _ = std::fs::remove_file(cf);
+    }
+    // Add clickable links to the merged file (only if any block has a URL).
+    let urls: Vec<Option<String>> = blocks.iter().map(|b| b.deep_link.clone()).collect();
+    if urls.iter().any(Option::is_some) {
+        if let Err(e) = add_link_annotations(out, &urls) {
+            eprintln!("warning: could not add PDF link annotations: {e:#}");
+        }
+    }
+    Ok(())
+}
+
+/// Concatenate several PDFs into one using `pdfunite` (poppler-utils).
+fn merge_pdfs(ins: &[PathBuf], out: &Path) -> Result<()> {
+    use std::process::Command;
+    let mut cmd = Command::new("pdfunite");
+    for p in ins {
+        cmd.arg(p);
+    }
+    cmd.arg(out);
+    let st = cmd
+        .output()
+        .context("running pdfunite (install poppler-utils)")?;
+    if !st.status.success() {
+        anyhow::bail!(
+            "pdfunite failed: {}",
+            String::from_utf8_lossy(&st.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+fn build_pdf_single(
     meta: &PdfMeta,
     blocks: &[PdfBlock],
     opts: &PdfOptions,
@@ -519,7 +580,8 @@ pub fn build_pdf(
         if i > 0 {
             doc.push(PageBreak::new());
         }
-        if let Some(img_path) = &b.image {
+        if !opts.text_only {
+            if let Some(img_path) = &b.image {
             match Image::from_path(img_path) {
                 Ok(img) => {
                     let (pw, ph) = image::image_dimensions(img_path).unwrap_or((1280, 720));
@@ -531,6 +593,7 @@ pub fn build_pdf(
                     );
                 }
                 Err(e) => doc.push(para(&format!("[Unable to embed image: {e}]"), &vi_style)),
+            }
             }
         }
         doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
