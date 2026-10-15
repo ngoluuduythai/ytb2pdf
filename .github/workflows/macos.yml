@@ -168,11 +168,17 @@ jobs:
           hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o "$DMG"
           rm -f /tmp/ytb2pdf-rw.dmg
 
+      - name: Package app ZIP, CLI archive and checksums
+        run: |
+          python3 -m unittest discover -s scripts/release -p 'test_package_extras.py'
+          python3 scripts/release/package-extras.py
+          (cd dist/assets && shasum -a 256 -c SHA256SUMS.txt)
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ytb2pdf-v${{ steps.release.outputs.version }}-macos-arm64
-          path: ytb2pdf-v${{ steps.release.outputs.version }}-macos-arm64.dmg
+          path: dist/assets/*
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -183,12 +189,11 @@ jobs:
           IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          DMG="ytb2pdf-v${YTB2PDF_VERSION}-macos-arm64.dmg"
           RELEASE_ARGS=()
           if [ "$IS_PRERELEASE" = true ]; then
             RELEASE_ARGS+=(--prerelease --latest=false)
           fi
-          gh release create "$TAG_NAME" "$DMG" \
+          gh release create "$TAG_NAME" dist/assets/* \
             --target "$COMMIT_SHA" \
             --title "ytb2pdf $TAG_NAME" \
             "${RELEASE_ARGS[@]}" \
