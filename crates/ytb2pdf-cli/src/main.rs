@@ -55,7 +55,7 @@ fn main() -> Result<()> {
             "--transcript" => {
                 let p = std::path::PathBuf::from(flag(i + 1)?);
                 if !p.is_file() {
-                    anyhow::bail!("--transcript: không tìm thấy file {}", p.display());
+                    anyhow::bail!("--transcript: file not found: {}", p.display());
                 }
                 cfg.transcript_file = Some(p);
                 i += 2;
@@ -145,6 +145,6 @@ fn emit_event(ev: PipelineEvent, json_out: bool) {
             }
         }
         PipelineEvent::Log(m) => println!("  {m}"),
-        PipelineEvent::Done(p) => println!("\n🎉 Xong! PDF ở: {}", p.display()),
+        PipelineEvent::Done(p) => println!("\nPDF created successfully: {}", p.display()),
     }
 }

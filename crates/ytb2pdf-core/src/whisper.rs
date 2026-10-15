@@ -46,7 +46,7 @@ impl WhisperModel {
     pub fn label(&self) -> &'static str {
         match self {
             WhisperModel::Fast => "Nhanh (tiny)",
-            WhisperModel::Medium => "Cân bằng (base)",
+            WhisperModel::Medium => "Balanced (base)",
         }
     }
 
@@ -80,8 +80,8 @@ pub fn whisper_cli_path() -> Result<PathBuf> {
         .or_else(|| find_on_path("whisper"))
         .ok_or_else(|| {
             anyhow!(
-                "không tìm thấy `whisper-cli` (bản .dmg chính thức đã bundle sẵn; \
-                 nếu chạy CLI riêng: brew install whisper-cpp)"
+                "`whisper-cli` was not found (included in the official .dmg; \
+                 for standalone CLI usage: brew install whisper-cpp)"
             )
         })
 }
@@ -95,7 +95,7 @@ pub fn ensure_model(model: WhisperModel, log: &dyn Fn(String)) -> Result<PathBuf
         return Ok(path);
     }
     log(format!(
-        "Tải model Whisper {} ({}) — chỉ một lần…",
+        "Downloading Whisper model {} ({}) — one-time setup…",
         model.label(),
         model.size_hint()
     ));
@@ -108,7 +108,7 @@ pub fn ensure_model(model: WhisperModel, log: &dyn Fn(String)) -> Result<PathBuf
         .status()
         .context("failed to run `curl` to download the whisper model")?;
     if !st.success() || !path.exists() {
-        anyhow::bail!("không tải được model Whisper từ {}", model.url());
+        anyhow::bail!("Failed to download Whisper model from {}", model.url());
     }
     Ok(path)
 }

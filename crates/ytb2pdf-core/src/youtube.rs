@@ -132,7 +132,7 @@ impl YtDlp {
             }
             let err2 = String::from_utf8_lossy(&retry.stderr);
             return Err(anyhow!(
-                "yt-dlp failed while {what} (exit {}):\n{}\n(thử lại không dùng web player client cũng thất bại (exit {}):\n{})",
+                "yt-dlp failed while {what} (exit {}):\n{}\n(retry without the web player client also failed (exit {}):\n{})",
                 out.status,
                 err.trim(),
                 retry.status,
