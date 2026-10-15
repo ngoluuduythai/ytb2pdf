@@ -6,6 +6,10 @@ name: macOS build
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Version, e.g. 0.2.0-rc.1 (blank: unique development version)'
+        type: string
+        required: false
       publish:
         description: 'Publish a development prerelease after the build succeeds'
         type: boolean
@@ -23,6 +27,20 @@ jobs:
     runs-on: macos-14 # Apple Silicon
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate and resolve release version
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          python3 -m unittest discover -s scripts/release -p 'test_prepare.py'
+          python3 scripts/release/prepare.py
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -31,6 +49,12 @@ jobs:
 
       - name: Build release
         run: cargo build --release -p ytb2pdf-app -p ytb2pdf-cli
+
+      - name: Verify binary release identity
+        run: |
+          EXPECTED="ytb2pdf $YTB2PDF_VERSION ($YTB2PDF_COMMIT)"
+          test "$(target/release/ytb2pdf-app --version)" = "$EXPECTED"
+          test "$(target/release/ytb2pdf-cli --version)" = "$EXPECTED"
 
       - name: Run core tests
         run: cargo test --release -p ytb2pdf-core
@@ -66,6 +90,11 @@ jobs:
           </dict>
           </plist>
           EOF
+          plutil -replace CFBundleShortVersionString -string "${{ steps.release.outputs.bundle_version }}" "$APP/Contents/Info.plist"
+          plutil -replace CFBundleVersion -string "$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT" "$APP/Contents/Info.plist"
+          plutil -insert Ytb2pdfReleaseVersion -string "$YTB2PDF_VERSION" "$APP/Contents/Info.plist"
+          plutil -insert Ytb2pdfCommit -string "$YTB2PDF_COMMIT" "$APP/Contents/Info.plist"
+          plutil -lint "$APP/Contents/Info.plist"
 
       - name: Bundle yt-dlp + ffmpeg into the .app
         run: |
@@ -104,7 +133,8 @@ jobs:
 
       - name: Package .dmg (drag-to-Applications)
         run: |
-          rm -rf dmg-root ytb2pdf-macos-arm64.dmg
+          DMG="ytb2pdf-v${YTB2PDF_VERSION}-macos-arm64.dmg"
+          rm -rf dmg-root "$DMG"
           mkdir -p dmg-root
           cp -R dist/ytb2pdf-app.app dmg-root/
           cp target/release/ytb2pdf-cli dmg-root/
@@ -135,35 +165,33 @@ jobs:
           hdiutil attach /tmp/ytb2pdf-rw.dmg -nobrowse -mountpoint /Volumes/Ytb2Pdf
           osascript /tmp/dmg-layout.scpt || true
           hdiutil detach /Volumes/Ytb2Pdf
-          hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o ytb2pdf-macos-arm64.dmg
+          hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o "$DMG"
           rm -f /tmp/ytb2pdf-rw.dmg
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ytb2pdf-macos-arm64
-          path: ytb2pdf-macos-arm64.dmg
+          name: ytb2pdf-v${{ steps.release.outputs.version }}-macos-arm64
+          path: ytb2pdf-v${{ steps.release.outputs.version }}-macos-arm64.dmg
+          if-no-files-found: error
 
       - name: Publish GitHub Release
         if: github.event_name == 'push' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
           COMMIT_SHA: ${{ github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            TAG_NAME="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
-              --target "$COMMIT_SHA" \
-              --title "Development build $TAG_NAME" \
-              --prerelease \
-              --generate-notes
-          else
-            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
-              --target "$COMMIT_SHA" \
-              --title "ytb2pdf $TAG_NAME" \
-              --generate-notes
+          DMG="ytb2pdf-v${YTB2PDF_VERSION}-macos-arm64.dmg"
+          RELEASE_ARGS=()
+          if [ "$IS_PRERELEASE" = true ]; then
+            RELEASE_ARGS+=(--prerelease --latest=false)
           fi
+          gh release create "$TAG_NAME" "$DMG" \
+            --target "$COMMIT_SHA" \
+            --title "ytb2pdf $TAG_NAME" \
+            "${RELEASE_ARGS[@]}" \
+            --generate-notes
 # For trusted distribution, configure Apple Developer ID signing and notarization.
 # Without notarization, macOS Gatekeeper may require manual approval.
