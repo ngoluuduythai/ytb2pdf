@@ -298,11 +298,11 @@ pub fn render_frames_pdf(
         });
         i = j + 1;
     }
-    log(format!(
-        "Gộp {} caption segments thành {} scene",
+    emit(PipelineEvent::Log(format!(
+        "Grouped {} caption segments into {} scenes",
         segments.len(),
         blocks.len()
-    ));
+    )));
 
     pdf::build_pdf(meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
     emit(PipelineEvent::Log(format!("PDF: {}", cfg.out_pdf.display())));
