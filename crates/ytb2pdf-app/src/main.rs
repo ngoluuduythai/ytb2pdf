@@ -49,7 +49,7 @@ impl App {
             cookies_file: None,
             transcript_file: None,
             running: false,
-            stage: "Sẵn sàng".to_string(),
+            stage: "Ready".to_string(),
             progress: None,
             logs: Vec::new(),
             result: None,
@@ -64,7 +64,7 @@ impl App {
         }
         let url = self.url.trim().to_string();
         if url.is_empty() {
-            self.error = Some("Anh ơi, dán link YouTube vào trước đã~".to_string());
+            self.error = Some("Please enter a YouTube URL.".to_string());
             return;
         }
         let (tx, rx) = mpsc::channel();
@@ -133,12 +133,12 @@ impl App {
                     }
                     UiMsg::Done(p) => {
                         self.result = Some(p);
-                        self.stage = "Hoàn thành".to_string();
+                        self.stage = "Completed".to_string();
                         finished = true;
                     }
                     UiMsg::Failed(e) => {
                         self.error = Some(e);
-                        self.stage = "Thất bại".to_string();
+                        self.stage = "Failed".to_string();
                         finished = true;
                     }
                 }
@@ -153,13 +153,13 @@ impl App {
     /// Header status: (dot colour, label).
     fn status(&self) -> (egui::Color32, &'static str) {
         if self.running {
-            (theme::ACCENT, "Đang chạy")
+            (theme::ACCENT, "Running")
         } else if self.result.is_some() {
-            (theme::SUCCESS, "Hoàn thành")
+            (theme::SUCCESS, "Completed")
         } else if self.error.is_some() {
-            (theme::DANGER, "Lỗi")
+            (theme::DANGER, "Error")
         } else {
-            (theme::TEXT_FAINT, "Sẵn sàng")
+            (theme::TEXT_FAINT, "Ready")
         }
     }
 }
@@ -197,7 +197,7 @@ impl eframe::App for App {
                                 .color(theme::TEXT),
                         );
                         ui.label(
-                            egui::RichText::new("Biến video bài giảng thành tài liệu PDF")
+                            egui::RichText::new("Turn video lectures into PDF documents")
                                 .small()
                                 .color(theme::TEXT_FAINT),
                         );
@@ -215,7 +215,7 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // ---- source ----
-            theme::section(ui, "NGUỒN");
+            theme::section(ui, "SOURCE");
             theme::card(ui, |ui| {
                 ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Link YouTube").color(theme::TEXT_DIM));
@@ -231,7 +231,7 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Transcript").color(theme::TEXT_DIM));
                 if ui
-                .add_enabled(!self.running, egui::Button::new("Chọn file .srt…"))
+                .add_enabled(!self.running, egui::Button::new("Choose subtitle file…"))
                 .clicked()
                 {
                 if let Some(p) = rfd::FileDialog::new()
@@ -252,7 +252,7 @@ impl eframe::App for App {
                 );
                 if ui
                 .add_enabled(!self.running, egui::Button::new("×"))
-                .on_hover_text("Bỏ file transcript")
+                .on_hover_text("Remove transcript file")
                 .clicked()
                 {
                 self.transcript_file = None;
@@ -260,7 +260,7 @@ impl eframe::App for App {
                 }
                 None => {
                 ui.label(
-                egui::RichText::new("(tuỳ chọn — có file thì bỏ qua caption YouTube/Whisper)")
+                egui::RichText::new("(optional — skips YouTube captions and Whisper)")
                 .small()
                 .color(theme::TEXT_FAINT),
                 );
@@ -269,7 +269,7 @@ impl eframe::App for App {
                 });
                 ui.add_space(8.0);
                 let primary = egui::Button::new(
-                egui::RichText::new(if self.running { "Đang xử lý…" } else { "Tạo PDF" })
+                egui::RichText::new(if self.running { "Processing…" } else { "Generate PDF" })
                 .color(egui::Color32::WHITE)
                 .strong(),
                 )
@@ -281,12 +281,12 @@ impl eframe::App for App {
             }); // end card
 
             // ---- options ----
-            theme::section(ui, "TÙY CHỌN");
+            theme::section(ui, "OPTIONS");
             egui::Grid::new("options")
                 .num_columns(2)
                 .spacing([12.0, 8.0])
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Dịch caption").color(theme::TEXT_DIM));
+                    ui.label(egui::RichText::new("Translate captions").color(theme::TEXT_DIM));
                     ui.horizontal(|ui| {
                         ui.add_enabled(
                             !self.running,
@@ -297,7 +297,7 @@ impl eframe::App for App {
                             egui::TextEdit::singleline(&mut self.target_lang).desired_width(44.0),
                         );
                         ui.label(
-                            egui::RichText::new("ngôn ngữ đích (vi, en, …)")
+                            egui::RichText::new("target language (vi, en, …)")
                                 .small()
                                 .color(theme::TEXT_FAINT),
                         );
@@ -310,11 +310,11 @@ impl eframe::App for App {
                             !self.running && self.translate,
                             egui::TextEdit::singleline(&mut self.gemini_api_key)
                                 .password(true)
-                                .hint_text("dán key (free tại aistudio.google.com)")
+                                .hint_text("Enter API key (aistudio.google.com)")
                                 .desired_width(280.0),
                         );
                         ui.label(
-                            egui::RichText::new("chỉ lưu trong phiên chạy")
+                            egui::RichText::new("stored for this session only")
                                 .small()
                                 .color(theme::TEXT_FAINT),
                         );
@@ -333,16 +333,16 @@ impl eframe::App for App {
                                 ui.selectable_value(
                                     &mut self.whisper_model,
                                     WhisperModel::Fast,
-                                    "Nhanh (tiny, ~75 MB)",
+                                    "Fast (tiny, ~75 MB)",
                                 );
                                 ui.selectable_value(
                                     &mut self.whisper_model,
                                     WhisperModel::Medium,
-                                    "Cân bằng (base, ~147 MB)",
+                                    "Balanced (base, ~147 MB)",
                                 );
                             });
                         ui.label(
-                            egui::RichText::new("model tải 1 lần khi video không có caption")
+                            egui::RichText::new("model downloads once if captions are unavailable")
                                 .small()
                                 .color(theme::TEXT_FAINT),
                         );
@@ -352,7 +352,7 @@ impl eframe::App for App {
                     ui.label(egui::RichText::new("Cookie").color(theme::TEXT_DIM));
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(!self.running, egui::Button::new("Chọn cookies.txt…"))
+                            .add_enabled(!self.running, egui::Button::new("Choose cookies.txt…"))
                             .clicked()
                         {
                             if let Some(p) = rfd::FileDialog::new()
@@ -367,7 +367,7 @@ impl eframe::App for App {
                                 self.cookies_file
                                     .as_ref()
                                     .map(|p| p.display().to_string())
-                                    .unwrap_or_else(|| "chưa chọn — chống 403/429 YouTube".to_string()),
+                                    .unwrap_or_else(|| "not selected — may help with YouTube 403/429 errors".to_string()),
                             )
                             .small()
                             .color(theme::TEXT_FAINT),
@@ -377,9 +377,9 @@ impl eframe::App for App {
                 });
 
             // ---- progress ----
-            theme::section(ui, "TIẾN TRÌNH");
+            theme::section(ui, "PROGRESS");
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Trạng thái:").color(theme::TEXT_DIM));
+                ui.label(egui::RichText::new("Status:").color(theme::TEXT_DIM));
                 let stage_color = if self.error.is_some() {
                     theme::DANGER
                 } else if self.result.is_some() {
@@ -407,12 +407,12 @@ impl eframe::App for App {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new("✔ PDF đã tạo xong:")
+                                egui::RichText::new("✔ PDF created:")
                                     .strong()
                                     .color(theme::SUCCESS),
                             );
                             ui.monospace(egui::RichText::new(path.display().to_string()).small());
-                            if ui.button("Mở PDF").clicked() {
+                            if ui.button("Open PDF").clicked() {
                                 open_with_system_viewer(path);
                             }
                         });
@@ -426,12 +426,12 @@ impl eframe::App for App {
                     .corner_radius(4.0)
                     .inner_margin(10.0)
                     .show(ui, |ui| {
-                        ui.label(egui::RichText::new(format!("Lỗi: {err}")).color(theme::DANGER));
+                        ui.label(egui::RichText::new(format!("Error: {err}")).color(theme::DANGER));
                     });
             }
 
             // ---- log ----
-            theme::section(ui, "NHẬT KÝ");
+            theme::section(ui, "LOGS");
             egui::Frame::new()
                 .fill(theme::FIELD_BG)
                 .stroke(egui::Stroke::new(1.0, theme::FIELD_BORDER))
@@ -446,7 +446,7 @@ impl eframe::App for App {
                             ui.set_min_width(ui.available_width());
                             if self.logs.is_empty() {
                                 ui.label(
-                                    egui::RichText::new("— chưa có gì —")
+                                    egui::RichText::new("— no logs yet —")
                                         .small()
                                         .color(theme::TEXT_FAINT),
                                 );
