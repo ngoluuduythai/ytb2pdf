@@ -59,7 +59,7 @@ pub fn run_v2_pipeline(
     let work_dir = cfg.work_dir.join("v2");
     std::fs::create_dir_all(&work_dir).context("creating v2 work dir")?;
     let seg_dir = work_dir.join("segments");
-    let frame_dir = work_dir.join("frames");
+    let frame_dir = work_dir.join(format!("frames-v2-{}", video.id));
     std::fs::create_dir_all(&seg_dir)?;
     std::fs::create_dir_all(&frame_dir)?;
 
@@ -190,7 +190,8 @@ pub fn run_v2_pipeline(
         duration_secs: meta.duration_secs,
         source_url: Some(video.url.clone()),
     };
-    pdf::build_pdf(&pdf_meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
+    let pdf_opts = PdfOptions { text_only: cfg.text_only, ..PdfOptions::default() };
+    pdf::build_pdf(&pdf_meta, &blocks, &pdf_opts, &cfg.out_pdf)?;
     log(format!("PDF: {}", cfg.out_pdf.display()));
     let out = cfg.out_pdf.clone();
     emit(PipelineEvent::Done(out.clone()));
