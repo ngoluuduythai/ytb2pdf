@@ -17,6 +17,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Install FFmpeg for integration tests
+        run: brew install ffmpeg
       - name: Format sources for compile checks
         run: cargo fmt --all
       - name: Compile workspace
