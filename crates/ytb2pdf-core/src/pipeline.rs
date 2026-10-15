@@ -50,6 +50,8 @@ pub struct PipelineConfig {
     /// Use Architecture V2 (low-res detection, high-res extraction).
     /// Best for long videos where download bandwidth is the bottleneck.
     pub v2: bool,
+    /// Skip images, captions only. For lightweight mobile reading.
+    pub text_only: bool,
 }
 
 impl Default for PipelineConfig {
@@ -72,6 +74,7 @@ impl Default for PipelineConfig {
                 .map(|n| n.get())
                 .unwrap_or(2),
             v2: false,
+            text_only: false,
         }
     }
 }
@@ -120,7 +123,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
 
     std::fs::create_dir_all(&cfg.work_dir).context("creating work dir")?;
     let sub_dir = cfg.work_dir.join("subs");
-    let frame_dir = cfg.work_dir.join("frames");
+    let frame_dir = cfg.work_dir.join(format!("frames-{}", video.id));
     std::fs::create_dir_all(&sub_dir)?;
     std::fs::create_dir_all(&frame_dir)?;
 
@@ -173,21 +176,35 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
 
     let translated = translate_segments(cfg, &segments, emit)?;
 
-    emit(PipelineEvent::Stage("Downloading video (720p)"));
-    let video_path = cfg.work_dir.join(format!("{}.mp4", video.id));
-    let video_path = ytdlp.download_video(&video, &video_path)?;
-    log(format!("Video: {}", video_path.display()));
+    // Text-only: skip video download entirely (no frames needed).
+    let video_path = if cfg.text_only {
+        log("Text-only mode: skipping video download".to_string());
+        cfg.work_dir.join(format!("{}.mp4", video.id))
+    } else {
+        emit(PipelineEvent::Stage("Downloading video (720p)"));
+        let vp = cfg.work_dir.join(format!("{}.mp4", video.id));
+        let vp = ytdlp.download_video(&video, &vp)?;
+        log(format!("Video: {}", vp.display()));
+        vp
+    };
 
     emit(PipelineEvent::Stage("Extracting frames at caption timestamps"));
     let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
     let total = timestamps.len();
-    let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
-        emit(PipelineEvent::Progress { done, total });
-    })?;
+    // Text-only mode: skip frame capture entirely (no images needed).
+    let kept = if cfg.text_only {
+        log("Text-only mode: skipping frame capture".to_string());
+        Vec::new()
+    } else {
+        let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
+            emit(PipelineEvent::Progress { done, total });
+        })?;
 
-    emit(PipelineEvent::Stage("Removing duplicate frames"));
-    let kept = dedupe_frames(frames, cfg.dhash_threshold);
-    emit(PipelineEvent::Log(format!("Kept {} / {} frames", kept.len(), total)));
+        emit(PipelineEvent::Stage("Removing duplicate frames"));
+        let kept = dedupe_frames(frames, cfg.dhash_threshold);
+        emit(PipelineEvent::Log(format!("Kept {} / {} frames", kept.len(), total)));
+        kept
+    };
     let pdf_meta = PdfMeta {
         title: meta.title.clone(),
         uploader: meta.uploader.clone(),
@@ -265,12 +282,16 @@ pub fn render_frames_pdf(
     // Compact: consecutive segments sharing the same kept frame (i.e. the
     // same on-screen scene, >90% similar by dHash) become ONE block with a
     // single image and the merged narration as a flowing paragraph.
+    // Text-only: no frames, so each segment is its own block.
     let mut blocks = Vec::new();
     let mut i = 0;
     while i < segments.len() {
         let mut j = i;
-        while j + 1 < segments.len() && seg_frame[j + 1] == seg_frame[i] {
-            j += 1;
+        // Only merge by frame when we have frames (not text-only).
+        if !kept.is_empty() {
+            while j + 1 < segments.len() && seg_frame[j + 1] == seg_frame[i] {
+                j += 1;
+            }
         }
         let first = &segments[i];
         let caption = pdf::merge_captions(segments[i..=j].iter().map(|s| s.text.as_str()));
@@ -304,7 +325,8 @@ pub fn render_frames_pdf(
         blocks.len()
     )));
 
-    pdf::build_pdf(meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
+    let pdf_opts = PdfOptions { text_only: cfg.text_only, ..PdfOptions::default() };
+    pdf::build_pdf(meta, &blocks, &pdf_opts, &cfg.out_pdf)?;
     emit(PipelineEvent::Log(format!("PDF: {}", cfg.out_pdf.display())));
     emit(PipelineEvent::Done(cfg.out_pdf.clone()));
     Ok(cfg.out_pdf.clone())
