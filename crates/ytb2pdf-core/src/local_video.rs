@@ -167,6 +167,12 @@ fn get_captions(
         emit(PipelineEvent::Log(format!("Using subtitle file: {}", transcript.display())));
         return subtitles::load_subtitles_file(&transcript);
     }
+    if let Some(embedded) = extract_embedded_subtitles(path, &cfg.work_dir) {
+        emit(PipelineEvent::Stage("Reading embedded subtitles"));
+        if let Ok(captions) = subtitles::load_subtitles_file(&embedded) {
+            return Ok(captions);
+        }
+    }
     if !meta.has_audio {
         bail!("No transcript or audio stream was found. Supply --transcript <file.srt> or choose a video with audio");
     }
@@ -199,6 +205,26 @@ fn make_local_proxy(source: &Path, out: &Path) -> Result<()> {
         bail!("FFmpeg could not generate a low-resolution proxy for {}", source.display());
     }
     Ok(())
+}
+
+/// Try converting the first embedded text subtitle track into SRT. Image-based
+/// subtitle tracks cannot be converted to SRT and use Whisper when possible.
+fn extract_embedded_subtitles(path: &Path, work_dir: &Path) -> Option<PathBuf> {
+    let output = work_dir.join("embedded-subtitles.srt");
+    let _ = std::fs::remove_file(&output);
+    let status = Command::new("ffmpeg")
+        .args(["-y", "-v", "error", "-i"])
+        .arg(path)
+        .args(["-map", "0:s:0", "-c:s", "srt"])
+        .arg(&output)
+        .status()
+        .ok()?;
+    if status.success() && output.is_file() && std::fs::metadata(&output).ok()?.len() > 0 {
+        Some(output)
+    } else {
+        let _ = std::fs::remove_file(&output);
+        None
+    }
 }
 
 /// The local adapter uses the same caption translation, frame compaction
