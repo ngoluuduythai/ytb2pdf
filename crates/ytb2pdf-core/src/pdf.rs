@@ -517,7 +517,7 @@ pub fn build_pdf(
                             .with_alignment(Alignment::Center),
                     );
                 }
-                Err(e) => doc.push(para(&format!("[không nhúng được ảnh: {e}]"), &vi_style)),
+                Err(e) => doc.push(para(&format!("[Unable to embed image: {e}]"), &vi_style)),
             }
         }
         doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
