@@ -97,7 +97,7 @@ fn offline_video_to_pdf() {
 fn local_video_pipeline_with_srt_produces_pdf() {
     use ytb2pdf_core::{run_pipeline, PipelineConfig};
 
-    let dir = workdir().join("local-video-adapter");
+    let dir = std::env::temp_dir().join(format!("ytb2pdf-local-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let video = dir.join("lecture.mp4");
     let subtitles = dir.join("lecture.srt");
