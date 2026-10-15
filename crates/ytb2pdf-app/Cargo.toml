@@ -1,6 +1,6 @@
 [package]
 name = "ytb2pdf-app"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Native desktop app (egui) for the YouTube -> PDF pipeline"

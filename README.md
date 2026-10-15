@@ -313,9 +313,41 @@ Not sure where to start? Documentation improvements, small bug fixes, test cover
 
 ## Building for macOS
 
-A Linux build does not produce a native macOS executable. The project includes a macOS GitHub Actions workflow at [`.github/workflows/macos.yml`](.github/workflows/macos.yml) for building and packaging an Apple Silicon (`arm64`) `.dmg`. Tagged builds (`v*`) publish to [GitHub Releases](https://github.com/ngoluuduythai/ytb2pdf/releases); manual workflow runs publish prereleases. Availability depends on successful workflow execution.
+The [macOS release workflow](.github/workflows/macos.yml) builds on an Apple Silicon runner for **macOS 14 or newer**. Linux builds cannot produce these native macOS packages.
 
-Code signing and notarization remain planned improvements and require appropriate Apple Developer credentials.
+### Release versions
+
+- Push a SemVer tag such as `v0.2.0` for a stable release, or `v0.2.0-rc.1` for a prerelease.
+- Or open **Actions → macOS release → Run workflow** and enter a version. A blank version produces a unique development prerelease, for example `0.1.0-dev.123456.1`.
+- Disable **Publish to GitHub Releases** for a manual build that only uploads Actions artifacts. Tagged builds always publish after validation.
+- Reuse a draft to retry an interrupted upload. Published releases and tags pointing at other commits are protected; use a new version for changed builds.
+
+The version is embedded in the desktop header, window title, CLI `--version`, app `--version`, macOS bundle metadata, artifact names, and release title. The release workflow injects `YTB2PDF_VERSION` and `YTB2PDF_COMMIT` at compile time; local builds use the shared version in `[workspace.package]` and a `local` commit marker. Prerelease suffixes remain visible in the app and build-info file; macOS's numeric version fields use the numeric version and workflow build number.
+
+### Release assets
+
+For `v0.2.0`, a complete release contains:
+
+| Asset | Contents |
+| --- | --- |
+| `ytb2pdf-v0.2.0-macos-arm64.dmg` | Desktop app, installation instructions, and Applications shortcut |
+| `ytb2pdf-v0.2.0-macos-arm64.app.zip` | The desktop app bundle |
+| `ytb2pdf-v0.2.0-macos-arm64-cli.tar.gz` | CLI launcher and bundled runtime; extract and run `./ytb2pdf --help` |
+| `ytb2pdf-v0.2.0-macos-arm64-build-info.json` | Version, source commit, build URL, runtime versions, and signing status |
+| `SHA256SUMS.txt` | SHA-256 checksums for all release assets above |
+
+Both desktop and CLI packages include **yt-dlp, FFmpeg, ffprobe, Deno, Whisper CLI, and their non-system dynamic libraries**. Whisper's Metal library is embedded; models download on first use when needed. No Homebrew installation is required on the user's Mac. The packaging checks reject build-runner library paths, and the workflow verifies both extracted archives by creating offline PDFs with Homebrew removed from `PATH`.
+
+Release notes include download guidance, requirements, signing status, and GitHub-generated changes. Uploads remain drafts until all expected assets are present. Stable releases become Latest; prereleases do not replace Latest. Before installing, place the downloaded assets and checksum file together and run `shasum -a 256 -c SHA256SUMS.txt`.
+
+Packages are **ad-hoc signed, not Apple Developer ID signed or notarized**. Gatekeeper may require approval through System Settings → Privacy & Security. Trusted distribution still requires Apple Developer credentials and notarization.
+
+Release-script tests can run locally with Python 3.11 or newer:
+
+```bash
+python3 -m unittest discover -s scripts/release -p 'test_*.py'
+bash -n scripts/release/build-runtime.sh scripts/release/publish.sh
+```
 
 ## Acknowledgments
 

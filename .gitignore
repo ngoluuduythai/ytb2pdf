@@ -2,3 +2,6 @@
 ytb2pdf-work/
 *.pdf
 .DS_Store
+/dist/
+/release-info.json
+__pycache__/

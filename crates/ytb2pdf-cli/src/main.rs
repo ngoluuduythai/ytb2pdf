@@ -17,6 +17,14 @@ fn usage() -> &'static str {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|arg| arg == "--version" || arg == "-V") {
+        println!("ytb2pdf {} ({})", ytb2pdf_core::VERSION, ytb2pdf_core::BUILD_COMMIT);
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|arg| arg == "--help" || arg == "-h") {
+        println!("{}", usage());
+        return Ok(());
+    }
     if args.len() < 2 {
         eprintln!("{}", usage());
         std::process::exit(2);

@@ -1,162 +1,116 @@
-# Build the macOS app on a real Mac runner. Produces a self-contained arm64
-# .dmg: proper .app bundle (with bundled yt-dlp + ffmpeg, no Homebrew needed)
-# + drag-to-Applications layout (FilmCraft-style).
-name: macOS build
+name: macOS release
+run-name: macOS release · ${{ inputs.version || github.ref_name }}
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.2.0 or 0.2.0-rc.1); blank creates a unique development prerelease'
+        type: string
+        required: false
+      publish:
+        description: Publish to GitHub Releases after validation
+        type: boolean
+        default: true
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
   contents: write
 
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-macos:
-    runs-on: macos-14 # Apple Silicon
+    runs-on: macos-14
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve version and source commit
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: python3 scripts/release/prepare.py
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
-      - name: Install runtime deps (for tests)
-        run: brew install yt-dlp ffmpeg
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Build release
-        run: cargo build --release -p ytb2pdf-app -p ytb2pdf-cli
-
-      - name: Run core tests
-        run: cargo test --release -p ytb2pdf-core
-
-      - name: Build .app bundle
+      - name: Install packaging and media tools
         run: |
-          APP="dist/ytb2pdf-app.app"
-          rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp target/release/ytb2pdf-app "$APP/Contents/MacOS/"
-          cat > "$APP/Contents/Info.plist" <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleName</key>
-              <string>Ytb2Pdf</string>
-              <key>CFBundleDisplayName</key>
-              <string>YouTube to PDF</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.github.ngoluuduythai.ytb2pdf</string>
-              <key>CFBundleVersion</key>
-              <string>0.1.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>0.1.0</string>
-              <key>CFBundleExecutable</key>
-              <string>ytb2pdf-app</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>11.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
+          test "$(uname -m)" = arm64
+          brew install ffmpeg deno dylibbundler cmake
 
-      - name: Bundle yt-dlp + ffmpeg into the .app
+      - name: Validate release scripts
         run: |
-         BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
-         mkdir -p "$BIN"
-         # yt-dlp: official standalone macOS binary (universal)
-         curl -sSL -o "$BIN/yt-dlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
-         chmod +x "$BIN/yt-dlp"
-         # ffmpeg: static arm64 build shipped in the imageio-ffmpeg wheel
-         pip3 install --quiet --break-system-packages imageio-ffmpeg
-         cp "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$BIN/ffmpeg"
-         chmod +x "$BIN/ffmpeg"
-         # deno: JS runtime so yt-dlp can solve YouTube's JS challenges (EJS)
-         curl -sSLf -o /tmp/deno.zip https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip
-         unzip -o -j /tmp/deno.zip -d "$BIN"
-         chmod +x "$BIN/deno"
-         rm -f /tmp/deno.zip
-         "$BIN/yt-dlp" --version
-         "$BIN/ffmpeg" -version 2>&1 | head -1
-         "$BIN/deno" --version | head -1
+          python3 -m unittest discover -s scripts/release -p 'test_*.py'
+          bash -n scripts/release/build-runtime.sh scripts/release/publish.sh
+          cargo fmt -p ytb2pdf-app -- --check
 
-
-      - name: Bundle whisper.cpp
+      - name: Build and test versioned binaries
         run: |
-          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
-          git clone --depth 1 https://github.com/ggerganov/whisper.cpp /tmp/whisper.cpp
-          cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/whisper.cpp/build -j --target whisper-cli
-          cp /tmp/whisper.cpp/build/bin/whisper-cli "$BIN/whisper-cli"
-          chmod +x "$BIN/whisper-cli"
-          rm -rf /tmp/whisper.cpp
-          ls -la "$BIN/"
+          cargo build --locked --release -p ytb2pdf-app -p ytb2pdf-cli
+          cargo test --locked --release --workspace
+          test "$(target/release/ytb2pdf-cli --version)" = "ytb2pdf $YTB2PDF_VERSION ($YTB2PDF_COMMIT)"
+          test "$(target/release/ytb2pdf-app --version)" = "ytb2pdf $YTB2PDF_VERSION ($YTB2PDF_COMMIT)"
 
-      - name: Ad-hoc sign the .app
-        run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # Replace with Developer ID signing and notarization for distribution
+      - name: Bundle relocatable media runtime
+        run: bash scripts/release/build-runtime.sh
 
-      - name: Package .dmg (drag-to-Applications)
+      - name: Write versioned app metadata
         run: |
-          rm -rf dmg-root ytb2pdf-macos-arm64.dmg
-          mkdir -p dmg-root
-          cp -R dist/ytb2pdf-app.app dmg-root/
-          cp target/release/ytb2pdf-cli dmg-root/
-          cp README.md dmg-root/README.txt
-          ln -s /Applications dmg-root/Applications
-          cat > /tmp/dmg-layout.scpt <<'EOF'
-          tell application "Finder"
-              tell disk "Ytb2Pdf"
-                  open
-                  set current view of container window to icon view
-                  set toolbar visible of container window to false
-                  set statusbar visible of container window to false
-                  set the bounds of container window to {100, 100, 620, 420}
-                  set theViewOptions to the icon view options of container window
-                  set arrangement of theViewOptions to not arranged
-                  set icon size of theViewOptions to 96
-                  set position of item "ytb2pdf-app.app" of container window to {150, 180}
-                  set position of item "Applications" of container window to {380, 180}
-                  close
-                  open
-                  update without registering applications
-                  delay 2
-              end tell
-          end tell
-          EOF
-          hdiutil create -size 300m -fs HFS+ -volname "Ytb2Pdf" -format UDRW \
-            -o /tmp/ytb2pdf-rw.dmg -srcfolder dmg-root
-          hdiutil attach /tmp/ytb2pdf-rw.dmg -nobrowse -mountpoint /Volumes/Ytb2Pdf
-          osascript /tmp/dmg-layout.scpt || true
-          hdiutil detach /Volumes/Ytb2Pdf
-          hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o ytb2pdf-macos-arm64.dmg
-          rm -f /tmp/ytb2pdf-rw.dmg
+          python3 scripts/release/bundle-metadata.py
+          plutil -lint dist/ytb2pdf-app.app/Contents/Info.plist
 
-      - name: Upload build artifact
+      - name: Ad-hoc sign and verify the app
+        run: |
+          codesign --force --deep --sign - dist/ytb2pdf-app.app
+          codesign --verify --deep --strict --verbose=2 dist/ytb2pdf-app.app
+
+      - name: Package versioned release assets
+        run: python3 scripts/release/package.py
+
+      - name: Verify relocated app and CLI archives offline
+        run: |
+          python3 scripts/release/smoke.py
+          (cd dist/assets && shasum -a 256 -c SHA256SUMS.txt)
+
+      - name: Upload complete release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ytb2pdf-macos-arm64
-          path: ytb2pdf-macos-arm64.dmg
+          name: ytb2pdf-v${{ steps.release.outputs.version }}-macos-arm64
+          path: |
+            dist/assets/*
+            dist/RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Publish GitHub Release
+      - name: Publish complete GitHub Release
+        if: github.event_name == 'push' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_PRERELEASE: ${{ steps.release.outputs.prerelease }}
+        run: bash scripts/release/publish.sh
+
+      - name: Write release summary
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            TAG_NAME="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
-              --target "$COMMIT_SHA" \
-              --title "Development build $TAG_NAME" \
-              --prerelease \
-              --generate-notes
-          else
-            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
-              --target "$COMMIT_SHA" \
-              --title "ytb2pdf $TAG_NAME" \
-              --generate-notes
-          fi
-# For trusted distribution, configure Apple Developer ID signing and notarization.
-# Without notarization, macOS Gatekeeper may require manual approval.
+          cat dist/RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\n### SHA-256 checksums\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          cat dist/assets/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+          printf '```\n' >> "$GITHUB_STEP_SUMMARY"

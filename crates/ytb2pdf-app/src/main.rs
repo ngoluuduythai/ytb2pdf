@@ -736,7 +736,11 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("ytb2pdf").heading().strong());
+                    ui.label(
+                        RichText::new(format!("ytb2pdf {}", ytb2pdf_core::VERSION))
+                            .heading()
+                            .strong(),
+                    );
                     let (label, color) = if running {
                         ("PROCESSING", theme::ACCENT_HOVER)
                     } else if self.result.is_some() {
@@ -926,6 +930,17 @@ fn ensure_bundled_tools_on_path() {
 }
 
 fn main() -> eframe::Result<()> {
+    if std::env::args()
+        .nth(1)
+        .is_some_and(|arg| arg == "--version" || arg == "-V")
+    {
+        println!(
+            "ytb2pdf {} ({})",
+            ytb2pdf_core::VERSION,
+            ytb2pdf_core::BUILD_COMMIT
+        );
+        return Ok(());
+    }
     ensure_bundled_tools_on_path();
     if std::env::args().nth(1).as_deref() == Some(worker::ARG) {
         std::process::exit(if worker::run().is_ok() { 0 } else { 1 });
@@ -937,7 +952,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "ytb2pdf — Video to PDF",
+        &format!("ytb2pdf {} — Video to PDF", ytb2pdf_core::VERSION),
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
