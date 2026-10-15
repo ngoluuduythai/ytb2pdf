@@ -28,12 +28,26 @@ ytb2pdf-cli "<youtube-url>" \
   [--quality 480] \               # optional: 480|720|1080 max height (default 720;
                                   #   use 480 for very long videos — smaller download)
   [--jobs 4] \                    # optional: parallel ffmpeg workers (default: CPU count)
+  [--v2] \                       # optional: Architecture V2 — low-res scene detection,
+                                  #   high-res segment download (saves bandwidth on long videos)
+  [--text-only] \                 # optional: captions only, no images (tiny PDF for mobile)
   --json
 ```
 
 JSON event types: `{"type":"stage","stage":"..."}`, `{"type":"progress","done":n,"total":m}`,
 `{"type":"log","message":"..."}`, `{"type":"done","pdf":"/path/to.pdf"}`.
 Exit code is non-zero on failure; the stderr message explains what went wrong.
+
+## Architecture V2 (`--v2`)
+
+For long videos (>1h), V2 saves download bandwidth:
+1. Downloads 240p proxy → detects scenes with ffmpeg
+2. Plans segments around scene changes
+3. Downloads only those segments at high-res via `yt-dlp --download-sections`
+4. Extracts frames, maps captions, builds PDF (same layout as V1)
+
+Tested on 30-min video: 25% bandwidth savings (101MB → 76MB).
+Best for long videos with sparse scenes (e.g. 12h lecture).
 
 ## Hard requirements & gotchas
 
