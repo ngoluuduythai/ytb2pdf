@@ -55,7 +55,7 @@ fn main() -> Result<()> {
             "--transcript" => {
                 let p = std::path::PathBuf::from(flag(i + 1)?);
                 if !p.is_file() {
-                    anyhow::bail!("--transcript: không tìm thấy file {}", p.display());
+                    anyhow::bail!("--transcript: file not found: {}", p.display());
                 }
                 cfg.transcript_file = Some(p);
                 i += 2;
