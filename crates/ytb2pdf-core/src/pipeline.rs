@@ -11,10 +11,13 @@ use crate::whisper;
 use crate::youtube::{self, YtDlp};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use crate::local_video;
 
 #[derive(Debug, Clone)]
 pub struct PipelineConfig {
     pub url: String,
+    /// Local file input. When set, the YouTube URL is ignored.
+    pub local_file: Option<PathBuf>,
     /// Caption language to fetch, e.g. `"en"`.
     pub source_lang: String,
     /// Translate captions into this language, e.g. `Some("vi")`. `None` = keep original.
@@ -53,6 +56,7 @@ impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
             url: String::new(),
+            local_file: None,
             source_lang: "en".to_string(),
             target_lang: None,
             gemini_api_key: None,
@@ -81,6 +85,9 @@ pub enum PipelineEvent {
 }
 
 pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<PathBuf> {
+    if let Some(path) = &cfg.local_file {
+        return local_video::run_local_pipeline(cfg, path, cfg.v2, emit);
+    }
     let log = |s: String| emit(PipelineEvent::Log(s));
 
     emit(PipelineEvent::Stage("Parsing URL"));
@@ -164,7 +171,34 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
     };
     log(format!("{} caption segments", segments.len()));
 
-    // ---- translation (optional) ----
+    let translated = translate_segments(cfg, &segments, emit)?;
+
+    emit(PipelineEvent::Stage("Downloading video (720p)"));
+    let video_path = cfg.work_dir.join(format!("{}.mp4", video.id));
+    let video_path = ytdlp.download_video(&video, &video_path)?;
+    log(format!("Video: {}", video_path.display()));
+
+    emit(PipelineEvent::Stage("Extracting frames at caption timestamps"));
+    let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
+    let total = timestamps.len();
+    let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
+        emit(PipelineEvent::Progress { done, total });
+    })?;
+
+    emit(PipelineEvent::Stage("Removing duplicate frames"));
+    let kept = dedupe_frames(frames, cfg.dhash_threshold);
+    emit(PipelineEvent::Log(format!("Kept {} / {} frames", kept.len(), total)));
+    let pdf_meta = PdfMeta {
+        title: meta.title.clone(),
+        uploader: meta.uploader.clone(),
+        duration_secs: meta.duration_secs,
+        source_url: Some(video.url.clone()),
+    };
+    return render_frames_pdf(cfg, &pdf_meta, &segments, &translated, &kept, emit);
+}
+
+pub fn translate_segments(cfg: &PipelineConfig, segments: &[Segment], emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<Vec<Option<String>>> {
+    let log = |s: String| emit(PipelineEvent::Log(s));
     let translated: Vec<Option<String>> = match &cfg.target_lang {
         Some(target) if target != &cfg.source_lang => {
             emit(PipelineEvent::Stage("Translating captions"));
@@ -190,23 +224,14 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         }
         _ => vec![None; segments.len()],
     };
+    Ok(translated)
+}
 
-    emit(PipelineEvent::Stage("Downloading video (720p)"));
-    let video_path = cfg.work_dir.join(format!("{}.mp4", video.id));
-    let video_path = ytdlp.download_video(&video, &video_path)?;
-    log(format!("Video: {}", video_path.display()));
-
-    emit(PipelineEvent::Stage("Extracting frames at caption timestamps"));
-    let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
-    let total = timestamps.len();
-    let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
-        emit(PipelineEvent::Progress { done, total });
-    })?;
-
-    emit(PipelineEvent::Stage("Removing duplicate frames"));
-    let kept = dedupe_frames(frames, cfg.dhash_threshold);
-    log(format!("Kept {} / {} frames", kept.len(), total));
-
+pub fn render_frames_pdf(
+    cfg: &PipelineConfig, meta: &PdfMeta, segments: &[Segment],
+    translated: &[Option<String>], kept: &[crate::frames::Frame],
+    emit: &(dyn Fn(PipelineEvent) + Sync),
+) -> Result<PathBuf> {
     // shrink kept frames so the PDF stays reasonable; 1920px stays crisp
     // when rendered large on the landscape pages
     for f in &kept {
@@ -261,7 +286,9 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         };
         blocks.push(PdfBlock {
             timestamp_secs: first.start,
-            deep_link: format!("https://youtu.be/{}?t={}s", video.id, first.start as u64),
+            deep_link: meta.source_url.as_ref().map(|url| {
+                format!("{}{}t={}s", url, if url.contains('?') { "&" } else { "?" }, first.start as u64)
+            }),
             caption,
             caption_translated,
             image: seg_frame[i]
@@ -277,15 +304,8 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         blocks.len()
     ));
 
-    let pdf_meta = PdfMeta {
-        title: meta.title.clone(),
-        uploader: meta.uploader.clone(),
-        duration_secs: meta.duration_secs,
-        source_url: video.url.clone(),
-    };
-    pdf::build_pdf(&pdf_meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
-    log(format!("PDF: {}", cfg.out_pdf.display()));
-
+    pdf::build_pdf(meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
+    emit(PipelineEvent::Log(format!("PDF: {}", cfg.out_pdf.display())));
     emit(PipelineEvent::Done(cfg.out_pdf.clone()));
     Ok(cfg.out_pdf.clone())
 }
