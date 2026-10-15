@@ -145,6 +145,6 @@ fn emit_event(ev: PipelineEvent, json_out: bool) {
             }
         }
         PipelineEvent::Log(m) => println!("  {m}"),
-        PipelineEvent::Done(p) => println!("\n🎉 Xong! PDF ở: {}", p.display()),
+        PipelineEvent::Done(p) => println!("\nPDF created successfully: {}", p.display()),
     }
 }
