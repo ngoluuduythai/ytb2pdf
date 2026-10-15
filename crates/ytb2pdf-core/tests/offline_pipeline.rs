@@ -65,7 +65,7 @@ fn offline_video_to_pdf() {
         }
         blocks.push(PdfBlock {
             timestamp_secs: seg.start,
-            deep_link: format!("https://youtu.be/TEST?t={}s", seg.start as u64),
+            deep_link: Some(format!("https://youtu.be/TEST?t={}s", seg.start as u64)),
             caption: seg.text.clone(),
             caption_translated: Some(format!("(dịch) {}", seg.text)),
             image: Some(kept[ki].path.clone()),
@@ -76,7 +76,7 @@ fn offline_video_to_pdf() {
         title: "Video test offline".to_string(),
         uploader: "ytb2pdf test".to_string(),
         duration_secs: 6,
-        source_url: "https://youtu.be/TEST".to_string(),
+        source_url: Some("https://youtu.be/TEST".to_string()),
     };
     let pdf_path = dir.join("out.pdf");
     build_pdf(&meta, &blocks, &PdfOptions::default(), &pdf_path).unwrap();
@@ -89,4 +89,36 @@ fn offline_video_to_pdf() {
     let _ = std::fs::remove_dir_all(&dir);
     // silence unused-mut warning path
     let _ = &mut segs;
+}
+
+
+/// Exercise the public source-aware pipeline without yt-dlp or network access.
+#[test]
+fn local_video_pipeline_with_srt_produces_pdf() {
+    use ytb2pdf_core::{run_pipeline, PipelineConfig};
+
+    let dir = std::env::temp_dir().join(format!("ytb2pdf-local-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let video = dir.join("lecture.mp4");
+    let subtitles = dir.join("lecture.srt");
+    let pdf = dir.join("lecture.pdf");
+    make_test_video(&video);
+    std::fs::write(&subtitles, SRT).unwrap();
+
+    let mut cfg = PipelineConfig::default();
+    cfg.local_file = Some(video);
+    cfg.work_dir = dir.join("scratch");
+    cfg.out_pdf = pdf.clone();
+    // No explicit transcript: verify same-basename sidecar discovery.
+    run_pipeline(&cfg, &|_| {}).expect("local file pipeline should succeed offline");
+
+    assert!(pdf.is_file());
+    assert!(std::fs::metadata(&pdf).unwrap().len() > 10_000);
+    // Local PDFs should not inject fake YouTube link annotations.
+    let document = lopdf::Document::load(&pdf).unwrap();
+    for (_, id) in document.get_pages() {
+        let page = document.get_object(id).unwrap().as_dict().unwrap();
+        assert!(page.get(b"Annots").is_err(), "local PDF must have no URL annotations");
+    }
+    let _ = std::fs::remove_dir_all(dir);
 }

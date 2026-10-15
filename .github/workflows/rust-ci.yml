@@ -1,0 +1,27 @@
+name: Rust CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Install FFmpeg for integration tests
+        run: brew install ffmpeg
+      - name: Format sources for compile checks
+        run: cargo fmt --all
+      - name: Compile workspace
+        run: cargo check --workspace
+      - name: Unit tests
+        run: cargo test --workspace

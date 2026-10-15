@@ -73,3 +73,23 @@ Apple Developer certificate vào repo secrets (đang để TODO).
 - [ ] Whisper fallback khi video không có caption (tái dùng pipeline mini-youglish)
 - [ ] Ký + notarize .dmg (cần Apple Developer cert)
 - [ ] Đặt tên app chính thức (hiện tại là `ytb2pdf` tạm)
+
+
+## Local video files (experimental)
+
+In addition to YouTube URLs, the CLI and native desktop application now support locally stored videos. Video data stays on your device; external network access may be required only for optional Gemini translation or the first Whisper model download.
+
+```bash
+# Convert a video and an existing SRT transcript
+cargo run -p ytb2pdf-cli -- "./lecture.mp4" --transcript "./lecture.srt" --out lecture.pdf
+
+# Let Whisper generate a transcript if there are no subtitles
+cargo run -p ytb2pdf-cli -- "./meeting.mov" --whisper-model medium --out meeting.pdf
+
+# Scene-aware local processing (experimental)
+cargo run -p ytb2pdf-cli -- "./long-course.mkv" --v2 --out long-course.pdf
+```
+
+The desktop app offers **YouTube URL** and **Local Video File** source modes. Supported containers depend on the FFmpeg codecs available (common examples: MP4, MOV, MKV, WebM, AVI). Sidecar transcripts with the same basename (`lecture.mp4` and `lecture.srt`) are detected automatically. Video files without transcripts need an audio track and `whisper-cli` for local transcription. Local PDF footers display timestamps rather than fabricated YouTube hyperlinks.
+
+This feature is under active development. Embedded subtitle streams, drag-and-drop, exhaustive cross-platform validation, and richer metadata controls are planned. See [Local Video Input Plan](docs/local-video-input-plan.md) for the full scope.

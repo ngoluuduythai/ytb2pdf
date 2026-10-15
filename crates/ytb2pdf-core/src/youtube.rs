@@ -92,7 +92,7 @@ impl YtDlp {
         }
     }
 
-    fn base_cmd(&self) -> Command {
+    pub(crate) fn base_cmd(&self) -> Command {
         let mut cmd = Command::new("yt-dlp");
         cmd.arg("--no-warnings");
         // YouTube's `n` challenge needs a JS runtime + the EJS solver script.
@@ -112,7 +112,7 @@ impl YtDlp {
         cmd
     }
 
-    fn run(&self, mut cmd: Command, what: &str) -> Result<std::process::Output> {
+    pub(crate) fn run(&self, mut cmd: Command, what: &str) -> Result<std::process::Output> {
         let out = cmd
             .output()
             .with_context(|| "failed to run `yt-dlp` — install it with `brew install yt-dlp` (https://github.com/yt-dlp/yt-dlp)")?;
