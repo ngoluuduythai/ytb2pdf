@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use ytb2pdf_core::{run_pipeline, v2, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url|local-video-path> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>] [--v2]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url|local-video-path> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>] [--v2] [--text-only]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -96,6 +96,10 @@ fn main() -> Result<()> {
             }
             "--v2" => {
                 cfg.v2 = true;
+                i += 1;
+            }
+            "--text-only" => {
+                cfg.text_only = true;
                 i += 1;
             }
             other => {
