@@ -199,6 +199,16 @@ fn open_with_system_viewer(path: &PathBuf) {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.running {
+            for dropped in ctx.input(|i| i.raw.dropped_files.clone()) {
+                if let Some(path) = dropped.path {
+                    if path.is_file() {
+                        self.local_file = Some(path);
+                        self.use_local_file = true;
+                    }
+                }
+            }
+        }
         self.poll();
         if self.running {
             ctx.request_repaint();
@@ -397,7 +407,7 @@ impl eframe::App for App {
                     ui.label(egui::RichText::new("Cookie").color(theme::TEXT_DIM));
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(!self.running, egui::Button::new("Choose cookies.txt…"))
+                            .add_enabled(!self.running && !self.use_local_file, egui::Button::new("Choose cookies.txt…"))
                             .clicked()
                         {
                             if let Some(p) = rfd::FileDialog::new()
