@@ -11,9 +11,9 @@ resources = app / 'Contents/Resources'
 info = json.loads(Path('release-info.json').read_text())
 for tool, args in {
     'yt-dlp': ['--version'], 'ffmpeg': ['-version'], 'ffprobe': ['-version'],
-    'deno': ['--version'],
+    'deno': ['--version'], 'pdfunite': ['-v'], 'pdfinfo': ['-v'],
 }.items():
-    result = subprocess.check_output([str(resources / 'bin' / tool), *args], text=True)
+    result = subprocess.check_output([str(resources / 'bin' / tool), *args], text=True, stderr=subprocess.STDOUT)
     info.setdefault('runtime', {})[tool] = result.splitlines()[0]
 info['runtime']['whisper.cpp'] = 'v1.8.2 (static, embedded Metal library)'
 plist = {
@@ -38,6 +38,8 @@ Source code and license information:
 - yt-dlp: https://github.com/yt-dlp/yt-dlp
 - FFmpeg and ffprobe: https://ffmpeg.org/legal.html
   Homebrew build and dependency sources: https://formulae.brew.sh/formula/ffmpeg
+- Poppler (pdfunite/pdfinfo): https://poppler.freedesktop.org/
+  Homebrew build and dependency sources: https://formulae.brew.sh/formula/poppler
 - Deno: https://github.com/denoland/deno
 - whisper.cpp v1.8.2: https://github.com/ggml-org/whisper.cpp/tree/v1.8.2
 This package is ad-hoc signed, not Apple Developer ID signed or notarized.

@@ -18,6 +18,15 @@ pub struct Frame {
     pub hash: u64,
 }
 
+pub(crate) fn cached_or_extract(video: &Path, at_secs: f64, path: &Path) -> Result<DynamicImage> {
+    if let Ok(image) = image::open(path) {
+        return Ok(image);
+    }
+    let _ = std::fs::remove_file(path);
+    extract_frame(video, at_secs, path)?;
+    image::open(path).context("Reading the extracted frame")
+}
+
 /// Grab a single JPEG frame at `at_secs` (fast seek: `-ss` before `-i`).
 pub fn extract_frame(video: &Path, at_secs: f64, out: &Path) -> Result<()> {
     let st = Command::new("ffmpeg")
@@ -43,7 +52,9 @@ pub fn extract_frame(video: &Path, at_secs: f64, out: &Path) -> Result<()> {
 
 /// 64-bit difference hash: grayscale -> 9x8 -> compare horizontal neighbours.
 pub fn dhash(img: &DynamicImage) -> u64 {
-    let small = img.grayscale().resize_exact(9, 8, image::imageops::FilterType::Triangle);
+    let small = img
+        .grayscale()
+        .resize_exact(9, 8, image::imageops::FilterType::Triangle);
     let gray = small.to_luma8();
     let mut hash: u64 = 0;
     for y in 0..8 {
@@ -109,22 +120,11 @@ pub fn capture_frames(
                 for (j, &t) in chunk.iter().enumerate() {
                     let i = start_idx + j;
                     let path = out_dir.join(format!("frame_{i:05}.jpg"));
-                    if !path.exists() {
-                        // Skip frames that can't be extracted (e.g. beyond
-                        // video duration) instead of failing the whole run.
-                        if extract_frame(&video, t, &path).is_err() {
-                            let _ = std::fs::remove_file(&path);
-                            let n =
-                                done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            on_one(n, total);
-                            continue;
-                        }
-                    }
-                    let img = match image::open(&path) {
+                    let img = match cached_or_extract(&video, t, &path) {
                         Ok(img) => img,
                         Err(_) => {
-                            let n =
-                                done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            let _ = std::fs::remove_file(&path);
+                            let n = done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                             on_one(n, total);
                             continue;
                         }
@@ -168,11 +168,45 @@ mod tests {
 
     #[test]
     fn dedupe_keeps_first_of_run() {
-        let mk = |h| Frame { at_secs: 0.0, path: PathBuf::from("x"), hash: h };
+        let mk = |h| Frame {
+            at_secs: 0.0,
+            path: PathBuf::from("x"),
+            hash: h,
+        };
         let frames = vec![mk(0), mk(1), mk(u64::MAX), mk(u64::MAX ^ 3)];
         let kept = dedupe_frames(frames, 6);
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].hash, 0);
         assert_eq!(kept[1].hash, u64::MAX);
+    }
+    #[test]
+    fn corrupt_cached_frames_are_repaired_and_valid_frames_need_no_source_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let video = dir.path().join("source.mp4");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:size=160x90:rate=2",
+                "-t",
+                "2",
+                "-c:v",
+                "mpeg4",
+            ])
+            .arg(&video)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let frame = dir.path().join("frame.jpg");
+        std::fs::write(&frame, b"interrupted JPEG").unwrap();
+        let repaired = cached_or_extract(&video, 0.5, &frame).unwrap();
+        assert_eq!(repaired.width(), 160);
+        // A valid cached frame must be returned before invoking ffmpeg.
+        let cached = cached_or_extract(&dir.path().join("missing-video.mp4"), 0.5, &frame).unwrap();
+        assert_eq!(cached.width(), 160);
     }
 }

@@ -22,7 +22,7 @@ def main():
     (image / 'INSTALL.txt').write_text(f'''ytb2pdf {info['version']} — Apple Silicon, macOS {info['minimum_macos']} or newer
 
 Drag ytb2pdf-app.app into Applications, then open it.
-The app includes yt-dlp, FFmpeg, ffprobe, Deno and whisper-cli.
+The app includes yt-dlp, FFmpeg, ffprobe, Poppler (pdfunite/pdfinfo), Deno and whisper-cli.
 Whisper models are downloaded on first use, when captions are unavailable.
 Translation is optional and requires a Gemini API key.
 This build is ad-hoc signed and not notarized by Apple.
@@ -55,7 +55,7 @@ Run from this directory:
   ./ytb2pdf --help
   ./ytb2pdf "./lecture.mp4" --transcript "./lecture.srt" --out lecture.pdf
 
-Bundled tools: yt-dlp, FFmpeg, ffprobe, Deno and Whisper CLI.
+Bundled tools: yt-dlp, FFmpeg, ffprobe, Poppler (pdfunite/pdfinfo), Deno and Whisper CLI.
 Whisper models download on first use if captions are unavailable.
 Third-party notices and license files are under Contents/Resources/.
 This build is ad-hoc signed, not Apple-notarized.

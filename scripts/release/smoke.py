@@ -35,6 +35,25 @@ with tempfile.TemporaryDirectory(prefix='ytb2pdf relocated ') as temporary:
     gui_pdf = root / 'desktop.pdf'
     request = dict(url='', local_file=str(video), v2=False, target_lang=None, api_key=None, fast_whisper=False, transcript=str(subtitles), cookies=None, work_dir=str(root / 'gui-work'), destination=str(gui_pdf))
     subprocess.run([str(gui), '--conversion-worker'], input=json.dumps(request), env=env, text=True, check=True, timeout=120)
-    for pdf in (cli_pdf, gui_pdf):
+    # Exercise the production 1500-scene chunk boundary using a tiny local
+    # video and text-only captions, with no Homebrew tools available on PATH.
+    long_subtitles = root / 'long captions.srt'
+    def timestamp(ms):
+        seconds, millis = divmod(ms, 1000)
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02},{millis:03}"
+    long_subtitles.write_text(''.join(
+        f"{i + 1}\n{timestamp(i * 1000)} --> {timestamp((i + 1) * 1000)}\nRelease scene {i + 1}.\n\n"
+        for i in range(1501)
+    ))
+    long_video = root / 'long sparse video.mp4'
+    subprocess.run([str(tools / 'ffmpeg'), '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=blue:size=128x72:rate=1/60', '-t', '1502', '-c:v', 'mpeg4', str(long_video)], env=env, check=True)
+    merged_pdf = root / 'chunked.pdf'
+    subprocess.run([str(cli), str(long_video), '--text-only', '--transcript', str(long_subtitles), '--work-dir', str(root / 'long-work'), '--out', str(merged_pdf)], env=env, check=True, timeout=240)
+    metadata = subprocess.check_output([str(tools / 'pdfinfo'), str(merged_pdf)], env=env, text=True)
+    pages = next(line.split(':', 1)[1].strip() for line in metadata.splitlines() if line.startswith('Pages:'))
+    assert pages == '1501', f'Chunked PDF has {pages} pages instead of 1501'
+    for pdf in (cli_pdf, gui_pdf, merged_pdf):
         assert pdf.read_bytes().startswith(b'%PDF-'), f'Invalid PDF: {pdf}'
 print('Relocated GUI worker and CLI generated valid PDFs without Homebrew on PATH')

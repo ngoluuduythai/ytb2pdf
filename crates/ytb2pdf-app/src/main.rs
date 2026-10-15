@@ -676,6 +676,7 @@ impl App {
             theme::card(ui, |ui| {
                 ui.label(RichText::new(title).strong().color(theme::DANGER));
                 ui.label(help);
+                ui.label("Completed stages are saved. Resume reuses them with the same source and settings.");
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Show processing details").clicked() {
                         self.details_open = true;
@@ -690,7 +691,7 @@ impl App {
             theme::card(ui, |ui| {
                 ui.label(RichText::new("Conversion cancelled").strong());
                 ui.label(
-                    "No partial PDF was saved. Your source and settings are ready to try again.",
+                    "Completed stages are saved. Resume to continue without repeating finished work.",
                 );
             });
         }
@@ -791,7 +792,7 @@ impl App {
                                     inline_error(ui, error);
                                 }
                                 let action = if self.error.is_some() || self.cancelled {
-                                    "Try again"
+                                    "Resume conversion"
                                 } else {
                                     "Generate PDF"
                                 };

@@ -14,7 +14,7 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-use crate::frames::{dhash, extract_frame, Frame};
+use crate::frames::{cached_or_extract, dhash, Frame};
 use crate::pdf::{self, PdfBlock, PdfMeta, PdfOptions};
 use crate::pipeline::{PipelineConfig, PipelineEvent};
 use crate::subtitles;
@@ -26,6 +26,12 @@ pub fn run_v2_pipeline(
     cfg: &PipelineConfig,
     emit: &(dyn Fn(PipelineEvent) + Sync),
 ) -> Result<PathBuf> {
+    let scoped = crate::resume::scoped_config(cfg)?;
+    let cfg = &scoped;
+    let _lock = crate::resume::lock_workspace(cfg)?;
+    if let Some(path) = crate::resume::try_pdf(cfg, emit)? {
+        return Ok(path);
+    }
     let log = |s: String| emit(PipelineEvent::Log(s));
 
     emit(PipelineEvent::Stage("Phân tích URL (V2)"));
@@ -46,8 +52,10 @@ pub fn run_v2_pipeline(
     };
 
     emit(PipelineEvent::Stage("Lấy thông tin video"));
-    let meta = ytdlp.metadata(&video).map_err(|e| {
-        anyhow::anyhow!("{e}\n\nGợi ý: đây là bot-check của YouTube với IP này.")
+    let meta = crate::resume::stage(cfg, "metadata", emit, || {
+        ytdlp
+            .metadata(&video)
+            .map_err(|e| anyhow::anyhow!("{e}\n\nGợi ý: đây là bot-check của YouTube với IP này."))
     })?;
     log(format!(
         "\"{}\" - {} ({})",
@@ -65,18 +73,21 @@ pub fn run_v2_pipeline(
 
     // ---- captions (same as V1) ----
     emit(PipelineEvent::Stage("Tải caption"));
-    let segments: Vec<subtitles::Segment> = if let Some(srt_path) = &cfg.transcript_file {
-        log(format!(
-            "Dùng transcript do người dùng cung cấp: {}",
-            srt_path.display()
-        ));
-        subtitles::load_subtitles_file(srt_path)?
-    } else {
-        match ytdlp.download_subtitles(&video, &cfg.source_lang, &work_dir.join("subs")) {
-            Ok(f) => subtitles::load_subtitles_file(&f)?,
-            Err(e) => return Err(anyhow::anyhow!("V2 cần caption: {e}")),
-        }
-    };
+    let segments: Vec<subtitles::Segment> = crate::resume::stage(cfg, "captions", emit, || {
+        let segments = if let Some(srt_path) = &cfg.transcript_file {
+            log(format!(
+                "Dùng transcript do người dùng cung cấp: {}",
+                srt_path.display()
+            ));
+            subtitles::load_subtitles_file(srt_path)?
+        } else {
+            match ytdlp.download_subtitles(&video, &cfg.source_lang, &work_dir.join("subs")) {
+                Ok(f) => subtitles::load_subtitles_file(&f)?,
+                Err(e) => return Err(anyhow::anyhow!("V2 cần caption: {e}")),
+            }
+        };
+        Ok(segments)
+    })?;
     log(format!("{} đoạn caption", segments.len()));
 
     // ---- 1. proxy download ----
@@ -88,7 +99,9 @@ pub fn run_v2_pipeline(
     // ---- 2. scene detection ----
     // Sample every 30s as fallback; filter catches the real cuts.
     emit(PipelineEvent::Stage("Phát hiện scene (V2)"));
-    let scenes = scene::detect_scenes(&proxy_path, 0.30, 30.0)?;
+    let scenes = crate::resume::stage(cfg, "scenes", emit, || {
+        scene::detect_scenes(&proxy_path, 0.30, 30.0)
+    })?;
     log(format!("Phát hiện {} scene", scenes.len()));
     if scenes.is_empty() {
         anyhow::bail!("không phát hiện được scene nào — thử lại với V1");
@@ -119,12 +132,13 @@ pub fn run_v2_pipeline(
     // ---- 5. extract one frame per scene ----
     emit(PipelineEvent::Stage("Trích frame theo scene (V2)"));
     let total_scenes = scenes.len();
-    let scene_frames = extract_scene_frames(&seg_plans, &seg_paths, &scenes, &frame_dir, &|done| {
-        emit(PipelineEvent::Progress {
-            done,
-            total: total_scenes,
-        });
-    })?;
+    let scene_frames =
+        extract_scene_frames(&seg_plans, &seg_paths, &scenes, &frame_dir, &|done| {
+            emit(PipelineEvent::Progress {
+                done,
+                total: total_scenes,
+            });
+        })?;
     log(format!("Trích {} frame", scene_frames.len()));
 
     // ---- 6. map captions to scenes ----
@@ -151,19 +165,21 @@ pub fn run_v2_pipeline(
             j += 1;
         }
         let first = &segments[mapped[i].caption_idx];
-        let caption =
-            pdf::merge_captions(segments[mapped[i].caption_idx..=mapped[j].caption_idx]
+        let caption = pdf::merge_captions(
+            segments[mapped[i].caption_idx..=mapped[j].caption_idx]
                 .iter()
-                .map(|s| s.text.as_str()));
-        let frame_idx = scene_to_frame
-            .get(&mapped[i].scene_time.to_bits())
-            .copied();
+                .map(|s| s.text.as_str()),
+        );
+        let frame_idx = scene_to_frame.get(&mapped[i].scene_time.to_bits()).copied();
         let image_path = frame_idx
             .and_then(|fi| scene_frames.get(fi))
             .map(|f| f.path.clone());
         blocks.push(PdfBlock {
             timestamp_secs: first.start,
-            deep_link: Some(format!("https://youtu.be/{}?t={}s", video.id, first.start as u64)),
+            deep_link: Some(format!(
+                "https://youtu.be/{}?t={}s",
+                video.id, first.start as u64
+            )),
             caption,
             caption_translated: None, // V2 skips translation for now
             image: image_path,
@@ -190,12 +206,11 @@ pub fn run_v2_pipeline(
         duration_secs: meta.duration_secs,
         source_url: Some(video.url.clone()),
     };
-    let pdf_opts = PdfOptions { text_only: cfg.text_only, ..PdfOptions::default() };
-    pdf::build_pdf(&pdf_meta, &blocks, &pdf_opts, &cfg.out_pdf)?;
-    log(format!("PDF: {}", cfg.out_pdf.display()));
-    let out = cfg.out_pdf.clone();
-    emit(PipelineEvent::Done(out.clone()));
-    Ok(out)
+    let pdf_opts = PdfOptions {
+        text_only: cfg.text_only,
+        ..PdfOptions::default()
+    };
+    crate::resume::save_and_render(cfg, &pdf_meta, &blocks, &pdf_opts, emit)
 }
 
 /// Extract one frame per scene from its containing segment.
@@ -226,15 +241,7 @@ fn extract_scene_frames(
         let seg_path = &seg_paths[seg_idx];
         let offset = (sc.time - seg_plans[seg_idx].start).max(0.0);
         let out = frame_dir.join(format!("v2_scene_{idx:05}.jpg"));
-        if !out.exists() {
-            // Don't fail the whole pipeline on one bad scene.
-            if extract_frame(seg_path, offset, &out).is_err() {
-                skipped += 1;
-                let _ = std::fs::remove_file(&out);
-                continue;
-            }
-        }
-        let img = match image::open(&out) {
+        let img = match cached_or_extract(seg_path, offset, &out) {
             Ok(img) => img,
             Err(_) => {
                 skipped += 1;

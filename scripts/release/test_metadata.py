@@ -17,7 +17,7 @@ class BundleMetadataTests(unittest.TestCase):
             resources = root / 'dist/ytb2pdf-app.app/Contents/Resources'
             tools = resources / 'bin'
             tools.mkdir(parents=True)
-            for tool in ('yt-dlp', 'ffmpeg', 'ffprobe', 'deno'):
+            for tool in ('yt-dlp', 'ffmpeg', 'ffprobe', 'deno', 'pdfunite', 'pdfinfo'):
                 path = tools / tool
                 path.write_text(f'#!/bin/sh\nprintf "{tool} test-version\\n"\n')
                 path.chmod(0o755)
@@ -36,5 +36,5 @@ class BundleMetadataTests(unittest.TestCase):
             self.assertEqual(plist['Ytb2pdfReleaseVersion'], '1.2.3-rc.2')
             inventory = json.loads((resources / 'build-info.json').read_text())
             self.assertEqual(inventory['commit'], info['commit'])
-            self.assertEqual(set(inventory['runtime']), {'yt-dlp', 'ffmpeg', 'ffprobe', 'deno', 'whisper.cpp'})
+            self.assertEqual(set(inventory['runtime']), {'yt-dlp', 'ffmpeg', 'ffprobe', 'pdfunite', 'pdfinfo', 'deno', 'whisper.cpp'})
             self.assertTrue((resources / 'whisper-LICENSE').exists())

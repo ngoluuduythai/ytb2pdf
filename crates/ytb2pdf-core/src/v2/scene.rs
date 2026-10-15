@@ -13,7 +13,7 @@ use std::path::Path;
 use std::process::Command;
 
 /// A detected scene change point.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Scene {
     /// Timestamp in seconds.
     pub time: f64,
@@ -23,7 +23,7 @@ pub struct Scene {
     pub source: SceneSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SceneSource {
     /// FFmpeg `select='gt(scene,T)'` filter.
     Filter,

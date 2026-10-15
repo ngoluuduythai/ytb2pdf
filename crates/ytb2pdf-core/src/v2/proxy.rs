@@ -12,6 +12,12 @@ use crate::youtube::{VideoRef, YtDlp};
 /// Download the lowest practical video stream for scene analysis.
 /// Falls back to whatever the lowest available stream is.
 pub fn download_proxy(ytdlp: &YtDlp, video: &VideoRef, out_path: &Path) -> Result<PathBuf> {
+    if crate::resume::artifact_valid(out_path) {
+        return Ok(out_path.to_path_buf());
+    }
+    if out_path.exists() {
+        std::fs::remove_file(out_path)?;
+    }
     let mut cmd = ytdlp.base_cmd();
     cmd.arg("-f")
         .arg("bv*[height<=240]/b[height<=240]/bv*/b*")
@@ -22,6 +28,7 @@ pub fn download_proxy(ytdlp: &YtDlp, video: &VideoRef, out_path: &Path) -> Resul
         .arg(&video.url);
     ytdlp.run(cmd, "downloading 240p proxy")?;
     if out_path.exists() {
+        crate::resume::commit_artifact(out_path)?;
         return Ok(out_path.to_path_buf());
     }
     // yt-dlp may pick its own extension when merging; find it.
@@ -30,6 +37,7 @@ pub fn download_proxy(ytdlp: &YtDlp, video: &VideoRef, out_path: &Path) -> Resul
     for entry in std::fs::read_dir(dir).context("listing proxy dir")? {
         let p = entry?.path();
         if p.file_stem().and_then(|s| s.to_str()) == Some(stem) {
+            crate::resume::commit_artifact(&p)?;
             return Ok(p);
         }
     }

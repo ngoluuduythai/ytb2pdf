@@ -4,14 +4,14 @@
 //! the `emit` callback, so both the CLI and the egui app can render it.
 
 use crate::frames::{capture_frames, dedupe_frames};
+use crate::local_video;
 use crate::pdf::{self, PdfBlock, PdfMeta, PdfOptions};
 use crate::subtitles::{self, Segment};
-use crate::translate::{GeminiTranslator, NoopTranslator, Translator};
+use crate::translate::{GeminiTranslator, Translator};
 use crate::whisper;
 use crate::youtube::{self, YtDlp};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use crate::local_video;
 
 #[derive(Debug, Clone)]
 pub struct PipelineConfig {
@@ -87,7 +87,17 @@ pub enum PipelineEvent {
     Done(PathBuf),
 }
 
-pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<PathBuf> {
+pub fn run_pipeline(
+    cfg: &PipelineConfig,
+    emit: &(dyn Fn(PipelineEvent) + Sync),
+) -> Result<PathBuf> {
+    let scoped = crate::resume::scoped_config(cfg)?;
+    let cfg = &scoped;
+    let _lock = crate::resume::lock_workspace(cfg)?;
+    if let Some(path) = crate::resume::try_pdf(cfg, emit)? {
+        return Ok(path);
+    }
+
     if let Some(path) = &cfg.local_file {
         return local_video::run_local_pipeline(cfg, path, cfg.v2, emit);
     }
@@ -111,15 +121,21 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
     };
 
     emit(PipelineEvent::Stage("Fetching video information"));
-    let meta = ytdlp.metadata(&video).map_err(|e| {
+    let meta = crate::resume::stage(cfg, "metadata", emit, || {
+        ytdlp.metadata(&video).map_err(|e| {
         anyhow::anyhow!(
             "{e}\n\nTip: YouTube may be challenging requests from this IP address. Select a cookies.txt file \
              (using the Cookie field in the app; export while signed in to youtube.com) and retry; \
              the app has already retried without the web player client. If it still fails, wait for rate limiting to subside."
         )
+    })
     })?;
-    log(format!("\"{}\" - {} ({})", meta.title, meta.uploader,
-        pdf::format_duration(meta.duration_secs)));
+    log(format!(
+        "\"{}\" - {} ({})",
+        meta.title,
+        meta.uploader,
+        pdf::format_duration(meta.duration_secs)
+    ));
 
     std::fs::create_dir_all(&cfg.work_dir).context("creating work dir")?;
     let sub_dir = cfg.work_dir.join("subs");
@@ -128,15 +144,16 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
     std::fs::create_dir_all(&frame_dir)?;
 
     emit(PipelineEvent::Stage("Downloading captions"));
-    let segments: Vec<Segment> = if let Some(srt_path) = &cfg.transcript_file {
-        log(format!(
-            "Using user-provided transcript: {} — skipping YouTube captions and Whisper",
-            srt_path.display()
-        ));
-        emit(PipelineEvent::Stage("Normalizing captions"));
-        subtitles::load_subtitles_file(srt_path)?
-    } else {
-        match ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir) {
+    let segments: Vec<Segment> = crate::resume::stage(cfg, "captions", emit, || {
+        let segments = if let Some(srt_path) = &cfg.transcript_file {
+            log(format!(
+                "Using user-provided transcript: {} — skipping YouTube captions and Whisper",
+                srt_path.display()
+            ));
+            emit(PipelineEvent::Stage("Normalizing captions"));
+            subtitles::load_subtitles_file(srt_path)?
+        } else {
+            match ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir) {
             Ok(sub_file) => {
                 log(format!("Caption: {}", sub_file.display()));
                 emit(PipelineEvent::Stage("Normalizing captions"));
@@ -171,7 +188,9 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
                 ))
             }
         }
-    };
+        };
+        Ok(segments)
+    })?;
     log(format!("{} caption segments", segments.len()));
 
     let translated = translate_segments(cfg, &segments, emit)?;
@@ -188,7 +207,9 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         vp
     };
 
-    emit(PipelineEvent::Stage("Extracting frames at caption timestamps"));
+    emit(PipelineEvent::Stage(
+        "Extracting frames at caption timestamps",
+    ));
     let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
     let total = timestamps.len();
     // Text-only mode: skip frame capture entirely (no images needed).
@@ -196,13 +217,23 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         log("Text-only mode: skipping frame capture".to_string());
         Vec::new()
     } else {
-        let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
-            emit(PipelineEvent::Progress { done, total });
-        })?;
+        let frames = capture_frames(
+            &video_path,
+            &timestamps,
+            &frame_dir,
+            cfg.jobs,
+            &|done, _| {
+                emit(PipelineEvent::Progress { done, total });
+            },
+        )?;
 
         emit(PipelineEvent::Stage("Removing duplicate frames"));
         let kept = dedupe_frames(frames, cfg.dhash_threshold);
-        emit(PipelineEvent::Log(format!("Kept {} / {} frames", kept.len(), total)));
+        emit(PipelineEvent::Log(format!(
+            "Kept {} / {} frames",
+            kept.len(),
+            total
+        )));
         kept
     };
     let pdf_meta = PdfMeta {
@@ -214,28 +245,33 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
     return render_frames_pdf(cfg, &pdf_meta, &segments, &translated, &kept, emit);
 }
 
-pub fn translate_segments(cfg: &PipelineConfig, segments: &[Segment], emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<Vec<Option<String>>> {
-    let log = |s: String| emit(PipelineEvent::Log(s));
+pub fn translate_segments(
+    cfg: &PipelineConfig,
+    segments: &[Segment],
+    emit: &(dyn Fn(PipelineEvent) + Sync),
+) -> Result<Vec<Option<String>>> {
     let translated: Vec<Option<String>> = match &cfg.target_lang {
         Some(target) if target != &cfg.source_lang => {
             emit(PipelineEvent::Stage("Translating captions"));
             let translator: Box<dyn Translator> = match &cfg.gemini_api_key {
                 Some(k) if !k.trim().is_empty() => Box::new(GeminiTranslator::new(k.trim())),
-                _ => match GeminiTranslator::from_env() {
-                    Ok(g) => Box::new(g),
-                    Err(e) => {
-                        log(format!("Warning: {e} - skipping translation and keeping original captions"));
-                        Box::new(NoopTranslator)
-                    }
-                },
+                _ => Box::new(GeminiTranslator::from_env()?),
             };
             let src: Vec<String> = segments.iter().map(|s| s.text.clone()).collect();
             let total = src.len();
             let mut out = Vec::with_capacity(total);
             for (i, chunk) in src.chunks(20).enumerate() {
-                let t = translator.translate(chunk, target)?;
+                let name = format!(
+                    "translation-{i}-{}",
+                    crate::resume::digest(&serde_json::to_vec(chunk)?)
+                );
+                let t: Vec<String> =
+                    crate::resume::stage(cfg, &name, emit, || translator.translate(chunk, target))?;
                 out.extend(t.into_iter().map(Some));
-                emit(PipelineEvent::Progress { done: ((i + 1) * 20).min(total), total });
+                emit(PipelineEvent::Progress {
+                    done: ((i + 1) * 20).min(total),
+                    total,
+                });
             }
             out
         }
@@ -245,8 +281,11 @@ pub fn translate_segments(cfg: &PipelineConfig, segments: &[Segment], emit: &(dy
 }
 
 pub fn render_frames_pdf(
-    cfg: &PipelineConfig, meta: &PdfMeta, segments: &[Segment],
-    translated: &[Option<String>], kept: &[crate::frames::Frame],
+    cfg: &PipelineConfig,
+    meta: &PdfMeta,
+    segments: &[Segment],
+    translated: &[Option<String>],
+    kept: &[crate::frames::Frame],
     emit: &(dyn Fn(PipelineEvent) + Sync),
 ) -> Result<PathBuf> {
     // shrink kept frames so the PDF stays reasonable; 1920px stays crisp
@@ -295,11 +334,7 @@ pub fn render_frames_pdf(
         }
         let first = &segments[i];
         let caption = pdf::merge_captions(segments[i..=j].iter().map(|s| s.text.as_str()));
-        let vi_merged = pdf::merge_captions(
-            translated[i..=j]
-                .iter()
-                .filter_map(|o| o.as_deref()),
-        );
+        let vi_merged = pdf::merge_captions(translated[i..=j].iter().filter_map(|o| o.as_deref()));
         let caption_translated = if vi_merged.is_empty() || vi_merged == caption {
             None
         } else {
@@ -308,7 +343,12 @@ pub fn render_frames_pdf(
         blocks.push(PdfBlock {
             timestamp_secs: first.start,
             deep_link: meta.source_url.as_ref().map(|url| {
-                format!("{}{}t={}s", url, if url.contains('?') { "&" } else { "?" }, first.start as u64)
+                format!(
+                    "{}{}t={}s",
+                    url,
+                    if url.contains('?') { "&" } else { "?" },
+                    first.start as u64
+                )
             }),
             caption,
             caption_translated,
@@ -325,9 +365,9 @@ pub fn render_frames_pdf(
         blocks.len()
     )));
 
-    let pdf_opts = PdfOptions { text_only: cfg.text_only, ..PdfOptions::default() };
-    pdf::build_pdf(meta, &blocks, &pdf_opts, &cfg.out_pdf)?;
-    emit(PipelineEvent::Log(format!("PDF: {}", cfg.out_pdf.display())));
-    emit(PipelineEvent::Done(cfg.out_pdf.clone()));
-    Ok(cfg.out_pdf.clone())
+    let pdf_opts = PdfOptions {
+        text_only: cfg.text_only,
+        ..PdfOptions::default()
+    };
+    crate::resume::save_and_render(cfg, meta, &blocks, &pdf_opts, emit)
 }

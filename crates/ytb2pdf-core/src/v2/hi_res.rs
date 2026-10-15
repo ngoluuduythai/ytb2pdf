@@ -50,8 +50,12 @@ pub fn download_segments(
                 for (j, seg) in chunk.iter().enumerate() {
                     let i = start_idx + j;
                     let path = out_dir.join(format!("seg_{i:03}.mp4"));
-                    if !path.exists() {
+                    if !crate::resume::artifact_valid(&path) {
+                        if path.exists() {
+                            std::fs::remove_file(&path)?;
+                        }
                         download_one(&worker, &url, seg, &path)?;
+                        crate::resume::commit_artifact(&path)?;
                     }
                     paths.push(path);
                     done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

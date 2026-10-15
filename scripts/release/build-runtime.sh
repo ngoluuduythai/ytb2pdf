@@ -10,7 +10,7 @@ cp target/release/ytb2pdf-app target/release/ytb2pdf-cli "$APP/Contents/MacOS/"
 # yt-dlp's standalone build includes its Python runtime.
 curl --fail --location --retry 3 -o "$BIN/yt-dlp" \
   https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
-for tool in ffmpeg ffprobe deno; do
+for tool in ffmpeg ffprobe pdfunite pdfinfo deno; do
   cp -L "$(command -v "$tool")" "$BIN/$tool"
 done
 
@@ -27,7 +27,8 @@ chmod +x "$BIN/"*
 # tool is in Resources/bin, so this relative executable path works after moving
 # the app and also in the CLI archive's matching Contents layout.
 dylibbundler -od -b \
-  -x "$BIN/ffmpeg" -x "$BIN/ffprobe" -x "$BIN/deno" -x "$BIN/whisper-cli" \
+  -x "$BIN/ffmpeg" -x "$BIN/ffprobe" -x "$BIN/pdfunite" -x "$BIN/pdfinfo" \
+  -x "$BIN/deno" -x "$BIN/whisper-cli" \
   -d "$APP/Contents/Frameworks" -p '@executable_path/../../Frameworks/'
 
 # Check that no shipped Mach-O still requires a build-runner/Homebrew path.
@@ -35,5 +36,7 @@ python3 scripts/release/verify-runtime.py "$APP"
 "$BIN/yt-dlp" --version
 "$BIN/ffmpeg" -version
 "$BIN/ffprobe" -version
+"$BIN/pdfunite" -v
+"$BIN/pdfinfo" -v
 "$BIN/deno" --version
 "$BIN/whisper-cli" --help

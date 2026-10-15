@@ -28,6 +28,7 @@ pub mod local_video;
 pub mod frames;
 pub mod pdf;
 pub mod pipeline;
+pub mod resume;
 pub mod subtitles;
 pub mod translate;
 pub mod v2;

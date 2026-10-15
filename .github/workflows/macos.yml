@@ -52,7 +52,7 @@ jobs:
       - name: Install packaging and media tools
         run: |
           test "$(uname -m)" = arm64
-          brew install ffmpeg deno dylibbundler cmake
+          brew install ffmpeg poppler deno dylibbundler cmake
 
       - name: Validate release scripts
         run: |

@@ -1,6 +1,6 @@
 //! PDF assembly with `genpdf` (pure-Rust, built on printpdf).
 //!
-//! Layout ("video frame" style): landscape A4, one caption segment per page —
+//! Layout ("video frame" style): landscape A4, each scene starts on a fresh page —
 //! title + kicker pinned to the top, the frame full-width right below them,
 //! the subtitle under the frame, and a fixed footer with a clickable
 //! "YouTube reference" link. Geometry, typography, and palette follow the
@@ -13,15 +13,17 @@
 //! [`PdfOptions::font_dir`], with system fonts as the last resort.
 
 use anyhow::{anyhow, Context, Result};
-use lopdf::dictionary;
-use genpdf::elements::{Break, Image, PageBreak, Paragraph};
+use genpdf::elements::{Break, Image, LinearLayout, Paragraph};
 use genpdf::render::Area;
 use genpdf::style::{Color, Style, StyledString};
 use genpdf::{
     Alignment, Context as GenContext, Document, Margins, Mm, PageDecorator, Position, Rotation,
     Scale, Size,
 };
+use lopdf::dictionary;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 // ---- landscape A4 "video frame" layout (all mm) ----
 // Fixed geometry measured from the reference `EDA_2_Page_Layout_Test.pdf`
@@ -73,6 +75,7 @@ fn baseline_y(baseline_mm: f64, size_pt: f64) -> Mm {
     Mm::from(baseline_mm - 1.265 * size_pt * 25.4 / 72.0)
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PdfMeta {
     pub title: String,
     pub uploader: String,
@@ -80,6 +83,7 @@ pub struct PdfMeta {
     pub source_url: Option<String>,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PdfBlock {
     pub timestamp_secs: f64,
     pub deep_link: Option<String>,
@@ -116,11 +120,18 @@ pub struct PdfOptions {
     pub font_name: String,
     /// Skip images, captions only. For lightweight mobile reading.
     pub text_only: bool,
+    /// Persist completed PDF parts for retries. Namespaced by prepared input digest.
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl Default for PdfOptions {
     fn default() -> Self {
-        Self { font_dir: None, font_name: "DejaVuSans".to_string(), text_only: false }
+        Self {
+            font_dir: None,
+            font_name: "DejaVuSans".to_string(),
+            text_only: false,
+            cache_dir: None,
+        }
     }
 }
 
@@ -171,14 +182,22 @@ fn embedded_font_family() -> Result<genpdf::fonts::FontFamily<genpdf::fonts::Fon
             .map_err(|e| anyhow!("bundled font {name} is unreadable: {e}"))
     };
     Ok(FontFamily {
-        regular: load("Regular", include_bytes!("../fonts/BeVietnamPro-Regular.ttf"))?,
+        regular: load(
+            "Regular",
+            include_bytes!("../fonts/BeVietnamPro-Regular.ttf"),
+        )?,
         bold: load("Bold", include_bytes!("../fonts/BeVietnamPro-Bold.ttf"))?,
         italic: load("Italic", include_bytes!("../fonts/BeVietnamPro-Italic.ttf"))?,
-        bold_italic: load("BoldItalic", include_bytes!("../fonts/BeVietnamPro-BoldItalic.ttf"))?,
+        bold_italic: load(
+            "BoldItalic",
+            include_bytes!("../fonts/BeVietnamPro-BoldItalic.ttf"),
+        )?,
     })
 }
 
-fn load_font_family(opts: &PdfOptions) -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>> {
+fn load_font_family(
+    opts: &PdfOptions,
+) -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>> {
     use genpdf::fonts::{FontData, FontFamily};
 
     // 1. explicit override  2. bundled Be Vietnam Pro  3. system fonts
@@ -208,10 +227,36 @@ fn load_font_family(opts: &PdfOptions) -> Result<genpdf::fonts::FontFamily<genpd
     }
 
     let candidates: &[(&str, &[&str])] = &[
-        ("regular", &["{n}.ttf", "{n}-Regular.ttf", "{n}-regular.ttf"]),
-        ("bold", &["{n}-Bold.ttf", "{n}Bold.ttf", "{n}-bold.ttf", "{n} Bold.ttf"]),
-        ("italic", &["{n}-Oblique.ttf", "{n}-Italic.ttf", "{n}Oblique.ttf", "{n}Italic.ttf"]),
-        ("bold_italic", &["{n}-BoldOblique.ttf", "{n}-BoldItalic.ttf", "{n}BoldOblique.ttf"]),
+        (
+            "regular",
+            &["{n}.ttf", "{n}-Regular.ttf", "{n}-regular.ttf"],
+        ),
+        (
+            "bold",
+            &[
+                "{n}-Bold.ttf",
+                "{n}Bold.ttf",
+                "{n}-bold.ttf",
+                "{n} Bold.ttf",
+            ],
+        ),
+        (
+            "italic",
+            &[
+                "{n}-Oblique.ttf",
+                "{n}-Italic.ttf",
+                "{n}Oblique.ttf",
+                "{n}Italic.ttf",
+            ],
+        ),
+        (
+            "bold_italic",
+            &[
+                "{n}-BoldOblique.ttf",
+                "{n}-BoldItalic.ttf",
+                "{n}BoldOblique.ttf",
+            ],
+        ),
     ];
     let mut tried = Vec::new();
     'names: for name in &names {
@@ -307,11 +352,18 @@ struct FrameDecorator {
     kicker: String,
     urls: Vec<Option<String>>,
     timestamps: Vec<f64>,
-    page_idx: usize,
+    scene_idx: Rc<Cell<usize>>,
+    page_urls: Rc<RefCell<Vec<Option<String>>>>,
 }
 
 impl FrameDecorator {
-    fn new(meta: &PdfMeta, urls: Vec<Option<String>>, timestamps: Vec<f64>) -> Self {
+    fn new(
+        meta: &PdfMeta,
+        urls: Vec<Option<String>>,
+        timestamps: Vec<f64>,
+        scene_idx: Rc<Cell<usize>>,
+        page_urls: Rc<RefCell<Vec<Option<String>>>>,
+    ) -> Self {
         let mut px = image023::RgbImage::new(1, 1);
         px.put_pixel(0, 0, image023::Rgb([BG.0, BG.1, BG.2]));
         Self {
@@ -320,7 +372,8 @@ impl FrameDecorator {
             kicker: format!("ORIGINAL VIDEO FRAME  /  {}", meta.uploader.to_uppercase()),
             urls,
             timestamps,
-            page_idx: 0,
+            scene_idx,
+            page_urls,
         }
     }
 }
@@ -344,7 +397,10 @@ impl PageDecorator for FrameDecorator {
             Some(300.0),
         );
         // 2. pinned header: title + kicker.
-        let title_style = Style::new().bold().with_font_size(16).with_color(rgb(TITLE_C));
+        let title_style = Style::new()
+            .bold()
+            .with_font_size(16)
+            .with_color(rgb(TITLE_C));
         let _ = area.print_str(
             &context.font_cache,
             Position::new(Mm::from(FRAME_X_MM), baseline_y(TITLE_BASE_MM, 16.0)),
@@ -358,6 +414,10 @@ impl PageDecorator for FrameDecorator {
             kicker_style,
             &self.kicker,
         );
+        let scene_idx = self.scene_idx.get();
+        self.page_urls
+            .borrow_mut()
+            .push(self.urls.get(scene_idx).cloned().flatten());
         // 3. footer at fixed positions.
         area.draw_line(
             vec![
@@ -366,18 +426,26 @@ impl PageDecorator for FrameDecorator {
             ],
             Style::new().with_color(rgb(DIVIDER_C)),
         );
-        let label_style = Style::new().bold().with_font_size(8).with_color(rgb(LABEL_C));
+        let label_style = Style::new()
+            .bold()
+            .with_font_size(8)
+            .with_color(rgb(LABEL_C));
         let _ = area.print_str(
             &context.font_cache,
             Position::new(Mm::from(TEXT_X_MM), baseline_y(LABEL_BASE_MM, 8.0)),
             label_style,
-            if self.urls.get(self.page_idx).and_then(|link| link.as_ref()).is_some() {
+            if self
+                .urls
+                .get(scene_idx)
+                .and_then(|link| link.as_ref())
+                .is_some()
+            {
                 "YouTube reference"
             } else {
                 "VIDEO TIMESTAMP"
             },
         );
-        if let Some(url) = self.urls.get(self.page_idx).and_then(|url| url.as_ref()) {
+        if let Some(url) = self.urls.get(scene_idx).and_then(|url| url.as_ref()) {
             let url_style = Style::new().with_font_size(9).with_color(rgb(URL_C));
             let _ = area.print_str(
                 &context.font_cache,
@@ -386,12 +454,16 @@ impl PageDecorator for FrameDecorator {
                 url,
             );
         } else {
-            let timestamp = self.timestamps.get(self.page_idx).copied().unwrap_or(0.0);
+            let timestamp = self.timestamps.get(scene_idx).copied().unwrap_or(0.0);
             let text = format_timestamp(timestamp);
             let style = Style::new().with_font_size(9).with_color(rgb(URL_C));
-            let _ = area.print_str(&context.font_cache, Position::new(Mm::from(TEXT_X_MM), baseline_y(URL_BASE_MM, 9.0)), style, &text);
+            let _ = area.print_str(
+                &context.font_cache,
+                Position::new(Mm::from(TEXT_X_MM), baseline_y(URL_BASE_MM, 9.0)),
+                style,
+                &text,
+            );
         }
-        self.page_idx += 1;
         // 4. flow area for frame + captions: the band between header and
         //    footer.
         let mut content = area;
@@ -440,7 +512,7 @@ fn add_link_annotations(pdf_path: &Path, urls: &[Option<String>]) -> Result<()> 
     if pages.len() != urls.len() {
         // A wrong link is worse than no link: skip rather than mis-link.
         anyhow::bail!(
-            "page count {} != {} blocks; skipping link annotations",
+            "page count {} != {} rendered page references; skipping link annotations",
             pages.len(),
             urls.len()
         );
@@ -455,7 +527,9 @@ fn add_link_annotations(pdf_path: &Path, urls: &[Option<String>]) -> Result<()> 
         lopdf::Object::Real(30.0),
     ]);
     for ((_n, page_id), url) in pages.iter().zip(urls.iter()) {
-        let Some(url) = url else { continue; };
+        let Some(url) = url else {
+            continue;
+        };
         let annot_id = doc.new_object_id();
         let annot = lopdf::dictionary! {
             "Type" => "Annot",
@@ -491,42 +565,70 @@ fn add_link_annotations(pdf_path: &Path, urls: &[Option<String>]) -> Result<()> 
     Ok(())
 }
 
-/// Build a PDF from blocks. For very long videos (thousands of pages),
-/// genpdf holds everything in memory, so we build in chunks of 1500 pages
-/// and merge with pdfunite to avoid OOM.
-pub fn build_pdf(
+/// Build large documents in bounded batches of scenes, then merge with Poppler.
+pub fn build_pdf(meta: &PdfMeta, blocks: &[PdfBlock], opts: &PdfOptions, out: &Path) -> Result<()> {
+    build_pdf_chunked(meta, blocks, opts, out, 1500)
+}
+
+fn build_pdf_chunked(
     meta: &PdfMeta,
     blocks: &[PdfBlock],
     opts: &PdfOptions,
     out: &Path,
+    chunk_size: usize,
 ) -> Result<()> {
-    const CHUNK: usize = 1500;
-    if blocks.len() <= CHUNK {
+    if blocks.len() <= chunk_size {
         return build_pdf_single(meta, blocks, opts, out);
     }
-    let tmp = out.with_extension("chunk_tmp");
+    // Fail before rendering thousands of pages if the runtime is incomplete.
+    let version = std::process::Command::new("pdfunite").arg("-v").output()
+        .context("PDF merging needs pdfunite. Update to the complete app release, or install Poppler (macOS: brew install poppler; Linux: apt install poppler-utils)")?;
+    anyhow::ensure!(
+        version.status.success(),
+        "pdfunite could not start: {}",
+        String::from_utf8_lossy(&version.stderr)
+    );
+    let scratch = if opts.cache_dir.is_none() {
+        Some(
+            tempfile::Builder::new()
+                .prefix("ytb2pdf-chunks-")
+                .tempdir()?,
+        )
+    } else {
+        None
+    };
+    let parts_dir = opts
+        .cache_dir
+        .as_deref()
+        .unwrap_or_else(|| scratch.as_ref().unwrap().path());
+    std::fs::create_dir_all(parts_dir)?;
     let mut chunk_files = Vec::new();
-    for (ci, chunk) in blocks.chunks(CHUNK).enumerate() {
-        let cf = tmp.with_file_name(format!(
-            "{}_chunk{ci:03}.pdf",
-            out.file_stem().and_then(|s| s.to_str()).unwrap_or("out")
-        ));
-        // Each chunk gets its own decorator with the right URL offset so
-        // footer links stay correct after merging.
-        build_pdf_single(meta, chunk, opts, &cf)?;
-        chunk_files.push(cf);
+    for (ci, chunk) in blocks.chunks(chunk_size).enumerate() {
+        let path = parts_dir.join(format!("chunk-{ci:03}.pdf"));
+        let checksum = path.with_extension("sha256");
+        if let (Ok(expected), Ok(actual)) = (
+            std::fs::read_to_string(&checksum),
+            crate::resume::file_digest(&path),
+        ) {
+            if expected == actual {
+                eprintln!("Resuming completed PDF part {}", ci + 1);
+                chunk_files.push(path);
+                continue;
+            }
+        }
+        let _ = std::fs::remove_file(&checksum);
+        // Each chunk annotates its actual rendered pages, including caption
+        // continuations. pdfunite preserves these annotations during merging.
+        build_pdf_single(meta, chunk, opts, &path)?;
+        crate::resume::atomic_write(&checksum, crate::resume::file_digest(&path)?.as_bytes())?;
+        chunk_files.push(path);
+    }
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
     }
     merge_pdfs(&chunk_files, out)?;
-    for cf in chunk_files {
-        let _ = std::fs::remove_file(cf);
-    }
-    // Add clickable links to the merged file (only if any block has a URL).
-    let urls: Vec<Option<String>> = blocks.iter().map(|b| b.deep_link.clone()).collect();
-    if urls.iter().any(Option::is_some) {
-        if let Err(e) = add_link_annotations(out, &urls) {
-            eprintln!("warning: could not add PDF link annotations: {e:#}");
-        }
-    }
+    // Do not reopen the full merged PDF with lopdf: that defeats chunking's
+    // memory bound, and per-scene URL counts do not include overflow pages.
     Ok(())
 }
 
@@ -550,6 +652,33 @@ fn merge_pdfs(ins: &[PathBuf], out: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Render exactly one scene at a time on fresh pages. A scene may span several
+/// pages; its shared index changes only after all of its content is rendered.
+struct ScenePages {
+    scenes: Vec<LinearLayout>,
+    current: Rc<Cell<usize>>,
+}
+
+impl genpdf::Element for ScenePages {
+    fn render(
+        &mut self,
+        context: &GenContext,
+        area: Area<'_>,
+        style: Style,
+    ) -> Result<genpdf::RenderResult, genpdf::error::Error> {
+        let index = self.current.get();
+        let Some(scene) = self.scenes.get_mut(index) else {
+            return Ok(genpdf::RenderResult::default());
+        };
+        let mut result = genpdf::Element::render(scene, context, area, style)?;
+        if !result.has_more {
+            self.current.set(index + 1);
+            result.has_more = index + 1 < self.scenes.len();
+        }
+        Ok(result)
+    }
+}
+
 fn build_pdf_single(
     meta: &PdfMeta,
     blocks: &[PdfBlock],
@@ -563,7 +692,16 @@ fn build_pdf_single(
     doc.set_paper_size(Size::new(PAGE_W_MM, PAGE_H_MM));
     let urls: Vec<Option<String>> = blocks.iter().map(|b| b.deep_link.clone()).collect();
     let timestamps: Vec<f64> = blocks.iter().map(|b| b.timestamp_secs).collect();
-    doc.set_page_decorator(FrameDecorator::new(meta, urls.clone(), timestamps));
+    let current = Rc::new(Cell::new(0));
+    let page_urls = Rc::new(RefCell::new(Vec::new()));
+    doc.set_page_decorator(FrameDecorator::new(
+        meta,
+        urls,
+        timestamps,
+        Rc::clone(&current),
+        Rc::clone(&page_urls),
+    ));
+    let mut scenes = Vec::new();
 
     let caption_style = Style::new()
         .bold()
@@ -574,53 +712,54 @@ fn build_pdf_single(
     /// Height of one `Break` line with genpdf's default 12 pt style (mm).
     const BREAK_LINE_MM: f64 = 1.265 * 12.0 * 25.4 / 72.0;
 
-    // One caption segment per landscape page: full-width frame, subtitle
-    // right below it. Header and footer are pinned by the decorator.
-    for (i, b) in blocks.iter().enumerate() {
-        if i > 0 {
-            doc.push(PageBreak::new());
-        }
+    // Each scene starts on a landscape page: full-width frame, then captions.
+    // Continuation pages keep that scene's footer reference and annotation.
+    for b in blocks {
+        let mut scene = LinearLayout::vertical();
         if !opts.text_only {
             if let Some(img_path) = &b.image {
-            match Image::from_path(img_path) {
-                Ok(img) => {
-                    let (pw, ph) = image::image_dimensions(img_path).unwrap_or((1280, 720));
-                    let translated = b.caption_translated.as_deref();
-                    let s = frame_scale(pw, ph, frame_box_h(&b.caption, translated));
-                    doc.push(
-                        img.with_scale(Scale::new(s, s))
-                            .with_alignment(Alignment::Center),
-                    );
+                match Image::from_path(img_path) {
+                    Ok(img) => {
+                        let (pw, ph) = image::image_dimensions(img_path).unwrap_or((1280, 720));
+                        let translated = b.caption_translated.as_deref();
+                        let s = frame_scale(pw, ph, frame_box_h(&b.caption, translated));
+                        scene.push(
+                            img.with_scale(Scale::new(s, s))
+                                .with_alignment(Alignment::Center),
+                        );
+                    }
+                    Err(e) => scene.push(para(&format!("[Unable to embed image: {e}]"), &vi_style)),
                 }
-                Err(e) => doc.push(para(&format!("[Unable to embed image: {e}]"), &vi_style)),
-            }
             }
         }
-        doc.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
+        scene.push(Break::new(CAPTION_GAP_MM / BREAK_LINE_MM));
 
         // Caption as a clean flowing paragraph — no timestamps in the text
         // (the footer's YouTube link already carries the time reference).
         let mut sub = Paragraph::new("");
         sub.push_styled(b.caption.clone(), caption_style.clone());
-        doc.push(sub);
+        scene.push(sub);
         if let Some(vi) = &b.caption_translated {
             if vi != &b.caption {
-                doc.push(para(&format!("VI: {vi}"), &vi_style));
+                scene.push(para(&format!("VI: {vi}"), &vi_style));
             }
         }
+        scenes.push(scene);
     }
 
+    doc.push(ScenePages { scenes, current });
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).context("creating PDF output dir")?;
     }
     doc.render_to_file(out)
         .with_context(|| format!("writing PDF to {}", out.display()))?;
 
-    // Clickable "YouTube reference" links: a nicety, never fatal.
+    // The decorator recorded one URL per real page, including continuations.
+    let urls = page_urls.borrow();
     if urls.iter().any(Option::is_some) {
-    if let Err(e) = add_link_annotations(out, &urls) {
-        eprintln!("warning: could not add PDF link annotations: {e:#}");
-    }
+        if let Err(e) = add_link_annotations(out, &urls) {
+            eprintln!("warning: could not add PDF link annotations: {e:#}");
+        }
     }
     Ok(())
 }
@@ -628,6 +767,125 @@ fn build_pdf_single(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn overflow_fixture() -> (PdfMeta, Vec<PdfBlock>) {
+        let meta = PdfMeta {
+            title: "Overflow regression".into(),
+            uploader: "ytb2pdf".into(),
+            duration_secs: 120,
+            source_url: Some("https://youtu.be/TEST".into()),
+        };
+        let blocks = vec![
+            PdfBlock {
+                timestamp_secs: 1.0,
+                deep_link: Some("https://youtu.be/TEST?t=1s".into()),
+                caption: "A long caption must continue without changing its video reference. "
+                    .repeat(700),
+                caption_translated: Some("Ban dich tiep tuc tren nhieu trang. ".repeat(100)),
+                image: None,
+                merged: true,
+            },
+            PdfBlock {
+                timestamp_secs: 60.0,
+                deep_link: None,
+                caption: "Local timestamp only.".into(),
+                caption_translated: None,
+                image: None,
+                merged: false,
+            },
+            PdfBlock {
+                timestamp_secs: 90.0,
+                deep_link: Some("https://youtu.be/TEST?t=90s".into()),
+                caption: "Last scene.".into(),
+                caption_translated: None,
+                image: None,
+                merged: false,
+            },
+        ];
+        (meta, blocks)
+    }
+
+    fn page_links(path: &Path) -> Vec<Option<String>> {
+        let doc = lopdf::Document::load(path).unwrap();
+        doc.get_pages()
+            .values()
+            .map(|id| {
+                let page = doc.get_object(*id).unwrap().as_dict().unwrap();
+                let Ok(annotations) = page.get(b"Annots") else {
+                    return None;
+                };
+                let annotations = doc.dereference(annotations).unwrap().1.as_array().unwrap();
+                if annotations.is_empty() {
+                    return None;
+                }
+                let annotation = doc
+                    .dereference(&annotations[0])
+                    .unwrap()
+                    .1
+                    .as_dict()
+                    .unwrap();
+                let action = doc
+                    .dereference(annotation.get(b"A").unwrap())
+                    .unwrap()
+                    .1
+                    .as_dict()
+                    .unwrap();
+                Some(
+                    String::from_utf8(action.get(b"URI").unwrap().as_str().unwrap().to_vec())
+                        .unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    fn assert_overflow_links(links: &[Option<String>]) {
+        assert!(
+            links.len() > 3,
+            "The long caption must actually spill onto extra pages"
+        );
+        for link in &links[..links.len() - 2] {
+            assert_eq!(link.as_deref(), Some("https://youtu.be/TEST?t=1s"));
+        }
+        assert_eq!(links[links.len() - 2], None);
+        assert_eq!(
+            links.last().unwrap().as_deref(),
+            Some("https://youtu.be/TEST?t=90s")
+        );
+    }
+
+    #[test]
+    fn scene_boundaries_do_not_add_blank_separator_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let (meta, mut blocks) = overflow_fixture();
+        blocks[0].caption = "First scene.".into();
+        blocks[0].caption_translated = None;
+        let out = dir.path().join("short.pdf");
+        build_pdf_single(&meta, &blocks, &PdfOptions::default(), &out).unwrap();
+        let links = page_links(&out);
+        assert_eq!(links.len(), 3);
+        assert_eq!(links[0].as_deref(), Some("https://youtu.be/TEST?t=1s"));
+        assert_eq!(links[1], None);
+        assert_eq!(links[2].as_deref(), Some("https://youtu.be/TEST?t=90s"));
+    }
+
+    #[test]
+    fn overflow_pages_keep_their_scene_links_and_following_scenes_stay_aligned() {
+        let dir = tempfile::tempdir().unwrap();
+        let (meta, blocks) = overflow_fixture();
+        let out = dir.path().join("overflow.pdf");
+        build_pdf_single(&meta, &blocks, &PdfOptions::default(), &out).unwrap();
+        assert_overflow_links(&page_links(&out));
+    }
+
+    #[test]
+    fn chunk_merge_preserves_links_without_reopening_the_entire_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let (meta, blocks) = overflow_fixture();
+        let out = dir.path().join("merged.pdf");
+        build_pdf_chunked(&meta, &blocks, &PdfOptions::default(), &out, 2).unwrap();
+        assert_overflow_links(&page_links(&out));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn merge_captions_joins_and_cleans() {

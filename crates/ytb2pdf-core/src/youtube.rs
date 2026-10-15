@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Accepted YouTube URL shapes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VideoRef {
     /// 11-char video id, e.g. `W25_BbZCZD0`
     pub id: String,
@@ -37,7 +37,11 @@ pub fn parse_youtube_url(url: &str) -> Result<VideoRef> {
     } else {
         ""
     };
-    if id.len() == 11 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if id.len() == 11
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         Ok(VideoRef {
             id: id.to_string(),
             url: url.to_string(),
@@ -47,7 +51,7 @@ pub fn parse_youtube_url(url: &str) -> Result<VideoRef> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VideoMeta {
     pub id: String,
     pub title: String,
@@ -60,8 +64,7 @@ pub struct VideoMeta {
 /// The `web` player client is challenged most aggressively (SABR-only
 /// streaming / PO-token); other clients often still work.
 fn is_player_challenge(stderr: &str) -> bool {
-    stderr.contains("The page needs to be reloaded")
-        || stderr.contains("Sign in to confirm you")
+    stderr.contains("The page needs to be reloaded") || stderr.contains("Sign in to confirm you")
 }
 
 /// Thin wrapper around the `yt-dlp` binary.
@@ -156,7 +159,11 @@ impl YtDlp {
         let v: serde_json::Value =
             serde_json::from_slice(&out.stdout).context("parsing yt-dlp JSON")?;
         Ok(VideoMeta {
-            id: v.get("id").and_then(|s| s.as_str()).unwrap_or(&video.id).to_string(),
+            id: v
+                .get("id")
+                .and_then(|s| s.as_str())
+                .unwrap_or(&video.id)
+                .to_string(),
             title: v
                 .get("title")
                 .and_then(|s| s.as_str())
@@ -178,6 +185,14 @@ impl YtDlp {
     /// Download the audio track (m4a) — used by the Whisper fallback when
     /// the video has no captions.
     pub fn download_audio(&self, video: &VideoRef, out_path: &Path) -> Result<PathBuf> {
+        if crate::resume::artifact_valid(out_path) {
+            return Ok(out_path.to_path_buf());
+        }
+        // yt-dlp's .part files are retained for its own download resumption.
+        if out_path.exists() {
+            std::fs::remove_file(out_path)?;
+        }
+
         let mut cmd = self.base_cmd();
         cmd.arg("--no-playlist")
             .arg("-f")
@@ -187,6 +202,7 @@ impl YtDlp {
             .arg(&video.url);
         self.run(cmd, "downloading audio")?;
         if out_path.exists() {
+            crate::resume::commit_artifact(out_path)?;
             Ok(out_path.to_path_buf())
         } else {
             Err(anyhow!("yt-dlp finished but the audio file is missing"))
@@ -248,6 +264,14 @@ impl YtDlp {
     /// default is plenty for frame grabs; 480p for very long videos).
     /// Uses patient retries — YouTube throttles datacenter IPs hard.
     pub fn download_video(&self, video: &VideoRef, out_path: &Path) -> Result<PathBuf> {
+        if crate::resume::artifact_valid(out_path) {
+            return Ok(out_path.to_path_buf());
+        }
+        // yt-dlp's .part files are retained for its own download resumption.
+        if out_path.exists() {
+            std::fs::remove_file(out_path)?;
+        }
+
         let mut cmd = self.base_cmd();
         let h = self.max_height;
         cmd.arg("-f")
@@ -267,6 +291,7 @@ impl YtDlp {
             .arg(&video.url);
         self.run(cmd, "downloading video")?;
         if out_path.exists() {
+            crate::resume::commit_artifact(out_path)?;
             Ok(out_path.to_path_buf())
         } else {
             // yt-dlp may pick its own extension when merging; find it.
@@ -275,6 +300,7 @@ impl YtDlp {
             for entry in std::fs::read_dir(dir).context("listing download dir")? {
                 let p = entry?.path();
                 if p.file_stem().and_then(|s| s.to_str()) == Some(stem) {
+                    crate::resume::commit_artifact(&p)?;
                     return Ok(p);
                 }
             }
@@ -295,16 +321,24 @@ mod tests {
         assert!(is_player_challenge(
             "ERROR: [youtube] abc123: Sign in to confirm you're not a bot"
         ));
-        assert!(!is_player_challenge("ERROR: HTTP Error 429: Too Many Requests"));
+        assert!(!is_player_challenge(
+            "ERROR: HTTP Error 429: Too Many Requests"
+        ));
         assert!(!is_player_challenge(""));
     }
 
     #[test]
     fn parses_common_url_shapes() {
         for (url, id) in [
-            ("https://youtu.be/W25_BbZCZD0?si=mrevVTlqybh9PXgl", "W25_BbZCZD0"),
+            (
+                "https://youtu.be/W25_BbZCZD0?si=mrevVTlqybh9PXgl",
+                "W25_BbZCZD0",
+            ),
             ("https://www.youtube.com/watch?v=W25_BbZCZD0", "W25_BbZCZD0"),
-            ("https://www.youtube.com/watch?v=W25_BbZCZD0&t=123s", "W25_BbZCZD0"),
+            (
+                "https://www.youtube.com/watch?v=W25_BbZCZD0&t=123s",
+                "W25_BbZCZD0",
+            ),
             ("https://www.youtube.com/shorts/W25_BbZCZD0", "W25_BbZCZD0"),
             ("https://www.youtube.com/embed/W25_BbZCZD0", "W25_BbZCZD0"),
         ] {

@@ -29,6 +29,28 @@ pub struct Request {
     pub destination: PathBuf,
 }
 
+impl Request {
+    fn config(&self) -> PipelineConfig {
+        PipelineConfig {
+            url: self.url.clone(),
+            local_file: self.local_file.clone(),
+            v2: self.v2,
+            target_lang: self.target_lang.clone(),
+            gemini_api_key: self.api_key.clone(),
+            whisper_model: if self.fast_whisper {
+                WhisperModel::Fast
+            } else {
+                WhisperModel::Medium
+            },
+            transcript_file: self.transcript.clone(),
+            cookies_file: self.cookies.clone(),
+            work_dir: self.work_dir.clone(),
+            out_pdf: self.destination.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Message {
     Stage(String),
@@ -51,14 +73,21 @@ impl Job {
     }
 
     fn start_with_executable(mut request: Request, executable: &std::path::Path) -> Result<Self> {
-        std::fs::create_dir_all(&request.work_dir).context("Could not create the work folder")?;
-        // Each attempt gets fresh scratch space: cached frames from different
-        // videos, subtitle timestamps or interrupted writes must never be reused.
-        let workspace = tempfile::Builder::new()
-            .prefix("conversion-")
-            .tempdir_in(&request.work_dir)
-            .context("Could not create conversion scratch space")?;
-        request.work_dir = workspace.path().to_path_buf();
+        let workspace = ytb2pdf_core::resume::prepare_workspace(&request.config())?;
+        request.work_dir = workspace.clone();
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(workspace.join("conversion.lock"))?;
+        lock.try_lock()
+            .context("This source and settings are already being processed in another window")?;
+        // Temporary writes are disposable; completed downloads/frames/checkpoints
+        // live beside them and survive failures, cancellation and app restarts.
+        let attempt = tempfile::Builder::new()
+            .prefix("attempt-")
+            .tempdir_in(&workspace)?;
         let parent = request
             .destination
             .parent()
@@ -73,6 +102,9 @@ impl Job {
         let payload = serde_json::to_vec(&request)?;
         let mut command = Command::new(executable);
         command
+            .env("TMPDIR", attempt.path())
+            .env("TMP", attempt.path())
+            .env("TEMP", attempt.path())
             .arg(ARG)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -102,7 +134,12 @@ impl Job {
         // Bounded channel prevents verbose external tools from growing memory indefinitely.
         let (tx, rx) = mpsc::sync_channel(256);
         let thread = std::thread::spawn(move || {
-            let _workspace = workspace;
+            let _ = tx.send(Message::Log(format!(
+                "Saved progress: {}",
+                workspace.display()
+            )));
+            let _lock = lock;
+            let _attempt = attempt;
             let out_tx = tx.clone();
             let output = std::thread::spawn(move || {
                 let mut completed = false;
@@ -204,23 +241,7 @@ fn stop_tree(child: &mut Child) {
 pub fn run() -> Result<()> {
     let request: Request =
         serde_json::from_reader(std::io::stdin().lock()).context("Invalid conversion request")?;
-    let cfg = PipelineConfig {
-        url: request.url,
-        local_file: request.local_file,
-        v2: request.v2,
-        target_lang: request.target_lang,
-        gemini_api_key: request.api_key,
-        whisper_model: if request.fast_whisper {
-            WhisperModel::Fast
-        } else {
-            WhisperModel::Medium
-        },
-        transcript_file: request.transcript,
-        cookies_file: request.cookies,
-        work_dir: request.work_dir,
-        out_pdf: request.destination,
-        ..Default::default()
-    };
+    let cfg = request.config();
     let emit = |event| {
         let message = match event {
             PipelineEvent::Stage(stage) => Message::Stage(stage.to_owned()),
@@ -318,7 +339,18 @@ else:
     }
 
     fn assert_clean(dir: &std::path::Path) {
-        assert_eq!(std::fs::read_dir(dir.join("work")).unwrap().count(), 0);
+        let cache = std::fs::read_dir(dir.join("work/resume"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(cache.join("cache-identity.json").is_file());
+        assert!(!std::fs::read_dir(cache).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("attempt-")));
         assert!(!std::fs::read_dir(dir).unwrap().any(|p| p
             .unwrap()
             .file_name()
@@ -365,8 +397,12 @@ else:
         let (dir, request, executable) = fixture("cancel");
         let destination = request.destination.clone();
         let job = Job::start_with_executable(request, &executable).unwrap();
-        let Message::Log(line) = job.rx.recv_timeout(Duration::from_secs(5)).unwrap() else {
-            panic!("Expected child PID");
+        let line = loop {
+            if let Message::Log(line) = job.rx.recv_timeout(Duration::from_secs(5)).unwrap() {
+                if line.starts_with("child-pid:") {
+                    break line;
+                }
+            }
         };
         let pid: i32 = line.strip_prefix("child-pid:").unwrap().parse().unwrap();
         job.cancel();

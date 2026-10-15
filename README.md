@@ -98,6 +98,7 @@ V2 remains optional. With YouTube input, it aims to reduce network downloads by 
 - Rust stable (tested with Rust 1.99)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) available on your `PATH` (**YouTube URLs only**)
 - [FFmpeg](https://ffmpeg.org/) available on your `PATH` (required for frame extraction, metadata probing, and local video processing)
+- [Poppler](https://poppler.freedesktop.org/) `pdfunite` on your `PATH` for documents with more than 1,500 scenes (`brew install poppler` on macOS; `apt install poppler-utils` on Debian/Ubuntu). Included in the packaged macOS app and CLI runtime.
 - Optional: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) `whisper-cli` for transcription when captions are missing (bundled in the macOS packaging workflow; model downloaded on first use)
 - Optional: a Gemini API key for subtitle translation
 
@@ -175,10 +176,18 @@ The desktop app guides you through **Source video → PDF options → Save PDF**
 - Keep the original captions by default, or enable translation and choose a language. A Gemini API key is required for translation and stays in memory for the session; captions are sent to Gemini only when translation is enabled.
 - Expand **Advanced** for experimental scene-aware V2 processing, the speech-recognition model, and optional YouTube cookies. YouTube V2 requires captions and does not support translation or Whisper fallback; incompatible settings are blocked before conversion.
 - Choose the PDF destination. The suggested filename uses the video ID or local filename, with a numeric suffix if needed. The default folder is Desktop, then Documents or your home folder when Desktop is unavailable. Existing PDFs are never overwritten.
-- Follow the current processing step and elapsed time, expand processing details, or **Cancel conversion** to stop the conversion worker and its media tools. Closing the app also stops the worker. Each attempt uses fresh scratch space under `~/.ytb2pdf/`, which is removed afterward; retries start a fresh conversion.
-- Once complete, **Open PDF**, **Open folder**, or **Convert another video**. PDFs are written to a temporary file in the destination folder and saved to the chosen filename only after successful conversion.
+- Follow the current processing step and elapsed time, expand processing details, or **Cancel conversion** to stop the conversion worker and its media tools. Closing the app also stops the worker. Completed stages are retained under `~/.ytb2pdf/resume/`. **Resume conversion** reuses matching saved work after errors, cancellation, or restarting the app. Source/configuration changes select a separate cache; API keys and cookies are not stored in checkpoints. Per-attempt temporary files are cleaned up; resumable downloads and saved progress remain.
+- Once complete, **Open PDF**, **Open folder**, or **Convert another video**. Saved progress remains available for another export; remove unneeded folders under `~/.ytb2pdf/resume/` manually to reclaim disk space. PDFs are written to a temporary file in the destination folder and saved to the chosen filename only after successful conversion.
 
 The interface scrolls at small window sizes and larger display scales. Errors include suggested next steps, while technical output stays under **Processing details**.
+
+### Resume after a failed PDF export
+
+Completed downloads, normalized captions, translation batches, frames and PDF inputs are saved. If PDF creation fails, retry with the same video and settings to resume directly at PDF generation, without downloading, transcribing, translating or extracting frames again. Completed PDF parts are checksum-verified and reused if a later part or the final merge fails. Changing the output filename does not invalidate saved work.
+
+The desktop app retains these checkpoints across restarts. The CLI uses the same mechanism under `--work-dir` (default `ytb2pdf-work/`). To resume, keep that work directory and use the same source and processing options. Local source metadata and subtitle content identify the input; changed source/options use a separate cache. Corrupted cached frames are extracted again, and incomplete stages are retried. Source video files and imported subtitles must remain available to validate the cache identity. A work-directory lock prevents concurrent conversions from modifying the same saved progress.
+
+Checkpoints contain captions, derived media and source metadata, but not API keys or cookies. Deleting a cache folder removes its saved progress. Intermediate files deleted by older desktop versions cannot be recovered automatically.
 
 ### YouTube authentication issues
 
@@ -336,7 +345,7 @@ For `v0.2.0`, a complete release contains:
 | `ytb2pdf-v0.2.0-macos-arm64-build-info.json` | Version, source commit, build URL, runtime versions, and signing status |
 | `SHA256SUMS.txt` | SHA-256 checksums for all release assets above |
 
-Both desktop and CLI packages include **yt-dlp, FFmpeg, ffprobe, Deno, Whisper CLI, and their non-system dynamic libraries**. Whisper's Metal library is embedded; models download on first use when needed. No Homebrew installation is required on the user's Mac. The packaging checks reject build-runner library paths, and the workflow verifies both extracted archives by creating offline PDFs with Homebrew removed from `PATH`.
+Both desktop and CLI packages include **yt-dlp, FFmpeg, ffprobe, Poppler (pdfunite/pdfinfo), Deno, Whisper CLI, and their non-system dynamic libraries**. Whisper's Metal library is embedded; models download on first use when needed. No Homebrew installation is required on the user's Mac. The packaging checks reject build-runner library paths, and the workflow verifies both extracted archives by creating offline PDFs with Homebrew removed from `PATH`.
 
 Release notes include download guidance, requirements, signing status, and GitHub-generated changes. Uploads remain drafts until all expected assets are present. Stable releases become Latest; prereleases do not replace Latest. Before installing, place the downloaded assets and checksum file together and run `shasum -a 256 -c SHA256SUMS.txt`.
 

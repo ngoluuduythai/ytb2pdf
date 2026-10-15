@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 /// One caption cue with absolute timestamps in seconds.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Segment {
     pub start: f64,
     pub end: f64,
@@ -29,9 +29,7 @@ fn parse_timestamp(ts: &str) -> Option<f64> {
     let ts = ts.trim().replace(',', ".");
     let mut parts = ts.split(':');
     let (h, m, s) = (parts.next()?, parts.next()?, parts.next()?);
-    Some(
-        h.parse::<f64>().ok()? * 3600.0 + m.parse::<f64>().ok()? * 60.0 + s.parse::<f64>().ok()?,
-    )
+    Some(h.parse::<f64>().ok()? * 3600.0 + m.parse::<f64>().ok()? * 60.0 + s.parse::<f64>().ok()?)
 }
 
 fn clean_text(raw: &str) -> String {
@@ -68,7 +66,11 @@ pub fn parse_srt(text: &str) -> Vec<Segment> {
             if let (Some(s), Some(e)) = (parse_timestamp(a), parse_timestamp(b)) {
                 let text = clean_text(&lines.collect::<Vec<_>>().join(" "));
                 if !text.is_empty() && e > s {
-                    segs.push(Segment { start: s, end: e, text });
+                    segs.push(Segment {
+                        start: s,
+                        end: e,
+                        text,
+                    });
                 }
             }
         }
@@ -77,7 +79,11 @@ pub fn parse_srt(text: &str) -> Vec<Segment> {
 }
 
 pub fn parse_vtt(text: &str) -> Vec<Segment> {
-    let body = text.lines().skip_while(|l| !l.contains("-->")).collect::<Vec<_>>().join("\n");
+    let body = text
+        .lines()
+        .skip_while(|l| !l.contains("-->"))
+        .collect::<Vec<_>>()
+        .join("\n");
     // vtt cues look like srt minus the counter; reuse the srt parser on the cue blocks
     parse_srt(&body.replace("--> ", "-->"))
 }
@@ -89,7 +95,11 @@ pub fn parse_json3(text: &str) -> Result<Vec<Segment>> {
     if let Some(events) = v.get("events").and_then(|e| e.as_array()) {
         for ev in events {
             let start = ev.get("tStartMs").and_then(|n| n.as_f64()).unwrap_or(0.0) / 1000.0;
-            let dur = ev.get("dDurationMs").and_then(|n| n.as_f64()).unwrap_or(0.0) / 1000.0;
+            let dur = ev
+                .get("dDurationMs")
+                .and_then(|n| n.as_f64())
+                .unwrap_or(0.0)
+                / 1000.0;
             let text = ev
                 .get("segs")
                 .and_then(|s| s.as_array())
@@ -101,7 +111,11 @@ pub fn parse_json3(text: &str) -> Result<Vec<Segment>> {
                 .unwrap_or_default();
             let text = clean_text(&text);
             if !text.is_empty() && dur > 0.0 {
-                segs.push(Segment { start, end: start + dur, text });
+                segs.push(Segment {
+                    start,
+                    end: start + dur,
+                    text,
+                });
             }
         }
     }
@@ -112,7 +126,11 @@ pub fn parse_json3(text: &str) -> Result<Vec<Segment>> {
 pub fn load_subtitles_file(path: &Path) -> Result<Vec<Segment>> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("reading subtitle file {}", path.display()))?;
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let mut segs = match ext.as_str() {
         "json3" | "json" => parse_json3(&text)?,
         "vtt" => parse_vtt(&text),

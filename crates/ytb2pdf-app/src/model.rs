@@ -86,7 +86,9 @@ pub fn available_output(folder: &Path, stem: &str) -> PathBuf {
 
 pub fn error_guidance(error: &str) -> (&'static str, &'static str) {
     let lower = error.to_lowercase();
-    if lower.contains("429") || lower.contains("too many requests") {
+    if lower.contains("pdfunite") || lower.contains("poppler") {
+        ("The PDF merging tool is unavailable", "Update to the complete app release, which includes Poppler for long documents. For a standalone CLI installation, install Poppler and try again.")
+    } else if lower.contains("429") || lower.contains("too many requests") {
         ("YouTube is limiting requests", "Wait before trying again. You can select a fresh cookies.txt file under Advanced. Repeated retries may extend the limit.")
     } else if lower.contains("403") || lower.contains("sign in") || lower.contains("bot") {
         ("YouTube needs authentication", "Select a cookies.txt file exported while signed in to YouTube under Advanced, then try again.")
