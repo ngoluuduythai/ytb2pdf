@@ -169,7 +169,16 @@ Local PDFs display **video timestamps** without fabricated YouTube links or embe
 cargo run -p ytb2pdf-app
 ```
 
-The desktop app lets you switch between **YouTube URL** and **Local Video File**, choose a file or drop it into the app, and optionally enable scene-aware V2 processing. It writes generated PDFs to `~/Desktop/ytb2pdf-<video-id-or-filename>.pdf` and uses `~/.ytb2pdf/` for temporary work files.
+The desktop app guides you through **Source video → PDF options → Save PDF**:
+
+- Paste a YouTube link, choose a local video, or drag and drop a video into the app. You can also import or drop an SRT/VTT subtitle file.
+- Keep the original captions by default, or enable translation and choose a language. A Gemini API key is required for translation and stays in memory for the session; captions are sent to Gemini only when translation is enabled.
+- Expand **Advanced** for experimental scene-aware V2 processing, the speech-recognition model, and optional YouTube cookies. YouTube V2 requires captions and does not support translation or Whisper fallback; incompatible settings are blocked before conversion.
+- Choose the PDF destination. The suggested filename uses the video ID or local filename, with a numeric suffix if needed. The default folder is Desktop, then Documents or your home folder when Desktop is unavailable. Existing PDFs are never overwritten.
+- Follow the current processing step and elapsed time, expand processing details, or **Cancel conversion** to stop the conversion worker and its media tools. Closing the app also stops the worker. Each attempt uses fresh scratch space under `~/.ytb2pdf/`, which is removed afterward; retries start a fresh conversion.
+- Once complete, **Open PDF**, **Open folder**, or **Convert another video**. PDFs are written to a temporary file in the destination folder and saved to the chosen filename only after successful conversion.
+
+The interface scrolls at small window sizes and larger display scales. Errors include suggested next steps, while technical output stays under **Processing details**.
 
 ### YouTube authentication issues
 

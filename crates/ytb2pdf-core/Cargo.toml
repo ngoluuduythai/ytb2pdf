@@ -16,3 +16,4 @@ image023 = { package = "image", version = "0.23" }
 genpdf = { version = "0.2", features = ["images"] }
 ureq = { version = "2", features = ["json"] }
 lopdf = "0.26"
+tempfile = "3"

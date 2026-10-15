@@ -5308,7 +5308,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "eframe",
+ "libc",
  "rfd",
+ "serde",
+ "serde_json",
+ "tempfile",
  "ytb2pdf-core",
 ]
 
@@ -5317,6 +5321,7 @@ name = "ytb2pdf-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde_json",
  "ytb2pdf-core",
 ]
 
@@ -5331,6 +5336,7 @@ dependencies = [
  "lopdf",
  "serde",
  "serde_json",
+ "tempfile",
  "ureq",
 ]
 

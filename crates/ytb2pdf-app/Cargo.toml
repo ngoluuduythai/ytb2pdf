@@ -9,4 +9,10 @@ description = "Native desktop app (egui) for the YouTube -> PDF pipeline"
 anyhow = "1"
 eframe = "0.32"
 rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
 ytb2pdf-core = { path = "../ytb2pdf-core" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

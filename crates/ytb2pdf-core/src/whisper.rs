@@ -88,8 +88,40 @@ pub fn whisper_cli_path() -> Result<PathBuf> {
 
 /// Ensure the model file exists locally, downloading it once if needed.
 pub fn ensure_model(model: WhisperModel, log: &dyn Fn(String)) -> Result<PathBuf> {
-    let dir = models_dir()?;
-    std::fs::create_dir_all(&dir)?;
+    ensure_model_in(model, None, log)
+}
+
+fn ensure_model_in(
+    model: WhisperModel,
+    scratch: Option<&Path>,
+    log: &dyn Fn(String),
+) -> Result<PathBuf> {
+    cache_model(model, &models_dir()?, scratch, log, |download| {
+        let status = Command::new("curl")
+            .arg("-sSL")
+            .arg("--fail")
+            .arg("-o")
+            .arg(download)
+            .arg(model.url())
+            .status()
+            .context("failed to run `curl` to download the whisper model")?;
+        anyhow::ensure!(
+            status.success(),
+            "Failed to download Whisper model from {}",
+            model.url()
+        );
+        Ok(())
+    })
+}
+
+fn cache_model(
+    model: WhisperModel,
+    dir: &Path,
+    scratch: Option<&Path>,
+    log: &dyn Fn(String),
+    fetch: impl FnOnce(&Path) -> Result<()>,
+) -> Result<PathBuf> {
+    std::fs::create_dir_all(dir)?;
     let path = dir.join(model.file_name());
     if path.exists() {
         return Ok(path);
@@ -99,16 +131,28 @@ pub fn ensure_model(model: WhisperModel, log: &dyn Fn(String)) -> Result<PathBuf
         model.label(),
         model.size_hint()
     ));
-    let st = Command::new("curl")
-        .arg("-sSL")
-        .arg("--fail")
-        .arg("-o")
-        .arg(&path)
-        .arg(model.url())
-        .status()
-        .context("failed to run `curl` to download the whisper model")?;
-    if !st.success() || !path.exists() {
+    // Download into scratch space so a cancelled desktop worker cannot leave
+    // an incomplete model at the cache path that future runs trust.
+    let download_dir = scratch.unwrap_or(dir);
+    std::fs::create_dir_all(download_dir)?;
+    let download = tempfile::Builder::new()
+        .prefix("whisper-download-")
+        .tempfile_in(download_dir)?;
+    fetch(download.path())?;
+    if download.as_file().metadata()?.len() == 0 {
         anyhow::bail!("Failed to download Whisper model from {}", model.url());
+    }
+    // Stage in the cache directory before the atomic rename, even if scratch
+    // and the cache live on different filesystems.
+    let staged = tempfile::Builder::new()
+        .prefix(".whisper-model-")
+        .tempfile_in(dir)?;
+    std::fs::copy(download.path(), staged.path())?;
+    match staged.persist_noclobber(&path) {
+        Ok(_) => {}
+        // Another conversion may have installed the same complete model first.
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.error).context("Installing the Whisper model"),
     }
     Ok(path)
 }
@@ -123,7 +167,7 @@ pub fn transcribe_audio(
     log: &dyn Fn(String),
 ) -> Result<Vec<Segment>> {
     let cli = whisper_cli_path()?;
-    let model_path = ensure_model(model, log)?;
+    let model_path = ensure_model_in(model, Some(work_dir), log)?;
 
     // whisper.cpp decodes WAV reliably; convert with the bundled ffmpeg.
     // 16 kHz mono is also exactly what Whisper wants.
@@ -186,12 +230,49 @@ mod tests {
     fn model_names_roundtrip() {
         assert_eq!(WhisperModel::from_name("fast"), Some(WhisperModel::Fast));
         assert_eq!(WhisperModel::from_name("tiny"), Some(WhisperModel::Fast));
-        assert_eq!(WhisperModel::from_name("medium"), Some(WhisperModel::Medium));
+        assert_eq!(
+            WhisperModel::from_name("medium"),
+            Some(WhisperModel::Medium)
+        );
         assert_eq!(WhisperModel::from_name("base"), Some(WhisperModel::Medium));
         assert_eq!(WhisperModel::from_name("huge"), None);
         assert_eq!(WhisperModel::Fast.file_name(), "ggml-tiny.bin");
         assert_eq!(WhisperModel::Medium.file_name(), "ggml-base.bin");
         assert!(WhisperModel::Medium.url().contains("huggingface.co"));
+    }
+
+    #[test]
+    fn interrupted_model_download_is_not_cached_and_can_be_retried() {
+        let dir = tempfile::tempdir().unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        let model = WhisperModel::Fast;
+        let failed = cache_model(model, dir.path(), Some(scratch.path()), &|_| {}, |path| {
+            std::fs::write(path, b"partial")?;
+            anyhow::bail!("Download interrupted")
+        });
+        assert!(failed.is_err());
+        assert!(!dir.path().join(model.file_name()).exists());
+        assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
+        let path = cache_model(model, dir.path(), Some(scratch.path()), &|_| {}, |path| {
+            std::fs::write(path, b"complete model")?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"complete model");
+    }
+
+    #[test]
+    fn concurrent_model_install_keeps_the_first_complete_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = WhisperModel::Fast;
+        let cached = dir.path().join(model.file_name());
+        let path = cache_model(model, dir.path(), None, &|_| {}, |path| {
+            std::fs::write(path, b"second complete download")?;
+            std::fs::write(&cached, b"first complete download")?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first complete download");
     }
 
     #[test]
