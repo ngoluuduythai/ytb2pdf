@@ -83,13 +83,13 @@ pub enum PipelineEvent {
 pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync)) -> Result<PathBuf> {
     let log = |s: String| emit(PipelineEvent::Log(s));
 
-    emit(PipelineEvent::Stage("Phân tích URL"));
+    emit(PipelineEvent::Stage("Parsing URL"));
     let video = youtube::parse_youtube_url(&cfg.url)?;
     log(format!("Video id: {}", video.id));
 
     if let Some(f) = &cfg.cookies_file {
         if !f.exists() {
-            anyhow::bail!("không tìm thấy file cookie: {}", f.display());
+            anyhow::bail!("Cookie file not found: {}", f.display());
         }
     }
 
@@ -100,12 +100,12 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         retries: 5,
     };
 
-    emit(PipelineEvent::Stage("Lấy thông tin video"));
+    emit(PipelineEvent::Stage("Fetching video information"));
     let meta = ytdlp.metadata(&video).map_err(|e| {
         anyhow::anyhow!(
-            "{e}\n\nGợi ý: đây là bot-check của YouTube với IP này. Hãy chọn file cookies.txt \
-             (ô \"Cookie\" trong app, export khi đang mở youtube.com) rồi thử lại; \
-             app đã tự thử không dùng web player client. Nếu vẫn lỗi, đợi một lúc cho hết throttle."
+            "{e}\n\nTip: YouTube may be challenging requests from this IP address. Select a cookies.txt file \
+             (using the Cookie field in the app; export while signed in to youtube.com) and retry; \
+             the app has already retried without the web player client. If it still fails, wait for rate limiting to subside."
         )
     })?;
     log(format!("\"{}\" - {} ({})", meta.title, meta.uploader,
@@ -117,32 +117,32 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
     std::fs::create_dir_all(&sub_dir)?;
     std::fs::create_dir_all(&frame_dir)?;
 
-    emit(PipelineEvent::Stage("Tải caption"));
+    emit(PipelineEvent::Stage("Downloading captions"));
     let segments: Vec<Segment> = if let Some(srt_path) = &cfg.transcript_file {
         log(format!(
-            "Dùng transcript do người dùng cung cấp: {} — bỏ qua caption YouTube và Whisper",
+            "Using user-provided transcript: {} — skipping YouTube captions and Whisper",
             srt_path.display()
         ));
-        emit(PipelineEvent::Stage("Chuẩn hoá caption"));
+        emit(PipelineEvent::Stage("Normalizing captions"));
         subtitles::load_subtitles_file(srt_path)?
     } else {
         match ytdlp.download_subtitles(&video, &cfg.source_lang, &sub_dir) {
             Ok(sub_file) => {
                 log(format!("Caption: {}", sub_file.display()));
-                emit(PipelineEvent::Stage("Chuẩn hoá caption"));
+                emit(PipelineEvent::Stage("Normalizing captions"));
                 subtitles::load_subtitles_file(&sub_file)?
             }
             // No captions on YouTube at all -> Whisper fallback:
             // download the audio track and transcribe locally with whisper.cpp.
             Err(e) if e.to_string().contains("no subtitles found") => {
-                log("Video không có caption YouTube — chuyển sang Whisper".to_string());
-                emit(PipelineEvent::Stage("Tải audio"));
+                log("YouTube captions unavailable — falling back to Whisper".to_string());
+                emit(PipelineEvent::Stage("Downloading audio"));
                 let audio_path = cfg.work_dir.join(format!("{}.m4a", video.id));
                 ytdlp.download_audio(&video, &audio_path)?;
                 log(format!("Audio: {}", audio_path.display()));
-                emit(PipelineEvent::Stage("Nhận dạng giọng nói (Whisper)"));
+                emit(PipelineEvent::Stage("Speech recognition (Whisper)"));
                 log(format!(
-                    "Đang chạy whisper.cpp (model {}) — có thể mất vài phút…",
+                    "Running whisper.cpp (model {}) — this may take several minutes…",
                     cfg.whisper_model.label()
                 ));
                 whisper::transcribe_audio(
@@ -155,25 +155,25 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(
-                    "{e}\n\nGợi ý: nếu là lỗi 429/403/bot-check, hãy bấm \"Chọn cookies.txt\" \
-                     (export khi đang mở youtube.com) rồi bấm Tạo PDF lại — request kèm session \
-                     đăng nhập thường thoát được giới hạn IP."
+                    "{e}\n\nTip: For HTTP 429/403 or bot challenges, select a cookies.txt file \
+                     (exported while signed in to youtube.com), then retry generating the PDF. An authenticated session \
+                     may help with IP-based restrictions."
                 ))
             }
         }
     };
-    log(format!("{} đoạn caption", segments.len()));
+    log(format!("{} caption segments", segments.len()));
 
     // ---- translation (optional) ----
     let translated: Vec<Option<String>> = match &cfg.target_lang {
         Some(target) if target != &cfg.source_lang => {
-            emit(PipelineEvent::Stage("Dịch caption"));
+            emit(PipelineEvent::Stage("Translating captions"));
             let translator: Box<dyn Translator> = match &cfg.gemini_api_key {
                 Some(k) if !k.trim().is_empty() => Box::new(GeminiTranslator::new(k.trim())),
                 _ => match GeminiTranslator::from_env() {
                     Ok(g) => Box::new(g),
                     Err(e) => {
-                        log(format!("Cảnh báo: {e} - bỏ qua bước dịch, giữ caption gốc"));
+                        log(format!("Warning: {e} - skipping translation and keeping original captions"));
                         Box::new(NoopTranslator)
                     }
                 },
@@ -191,21 +191,21 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         _ => vec![None; segments.len()],
     };
 
-    emit(PipelineEvent::Stage("Tải video (720p)"));
+    emit(PipelineEvent::Stage("Downloading video (720p)"));
     let video_path = cfg.work_dir.join(format!("{}.mp4", video.id));
     let video_path = ytdlp.download_video(&video, &video_path)?;
     log(format!("Video: {}", video_path.display()));
 
-    emit(PipelineEvent::Stage("Chụp frame theo caption"));
+    emit(PipelineEvent::Stage("Extracting frames at caption timestamps"));
     let timestamps: Vec<f64> = segments.iter().map(|s| s.midpoint()).collect();
     let total = timestamps.len();
     let frames = capture_frames(&video_path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
         emit(PipelineEvent::Progress { done, total });
     })?;
 
-    emit(PipelineEvent::Stage("Loại frame trùng"));
+    emit(PipelineEvent::Stage("Removing duplicate frames"));
     let kept = dedupe_frames(frames, cfg.dhash_threshold);
-    log(format!("Giữ {} / {} frame", kept.len(), total));
+    log(format!("Kept {} / {} frames", kept.len(), total));
 
     // shrink kept frames so the PDF stays reasonable; 1920px stays crisp
     // when rendered large on the landscape pages
@@ -213,7 +213,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         let _ = pdf::shrink_image(&f.path, 1920);
     }
 
-    emit(PipelineEvent::Stage("Dựng PDF"));
+    emit(PipelineEvent::Stage("Generating PDF"));
     // Each segment shows the latest kept frame at or before its midpoint
     // (slides stay on screen while the speaker keeps talking).
     let mut seg_frame: Vec<Option<usize>> = Vec::with_capacity(segments.len());
@@ -272,7 +272,7 @@ pub fn run_pipeline(cfg: &PipelineConfig, emit: &(dyn Fn(PipelineEvent) + Sync))
         i = j + 1;
     }
     log(format!(
-        "Gộp {} đoạn caption thành {} scene",
+        "Gộp {} caption segments thành {} scene",
         segments.len(),
         blocks.len()
     ));
