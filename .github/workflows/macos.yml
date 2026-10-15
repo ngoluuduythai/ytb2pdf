@@ -5,6 +5,12 @@ name: macOS build
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-macos:
@@ -76,8 +82,19 @@ jobs:
          "$BIN/deno" --version | head -1
 
 
+      - name: Bundle whisper.cpp
+        run: |
+          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
+          git clone --depth 1 https://github.com/ggerganov/whisper.cpp /tmp/whisper.cpp
+          cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/whisper.cpp/build -j --target whisper-cli
+          cp /tmp/whisper.cpp/build/bin/whisper-cli "$BIN/whisper-cli"
+          chmod +x "$BIN/whisper-cli"
+          rm -rf /tmp/whisper.cpp
+          ls -la "$BIN/"
+
       - name: Ad-hoc sign the .app
-        run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # chưa thay notarize
+        run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # Replace with Developer ID signing and notarization for distribution
 
       - name: Package .dmg (drag-to-Applications)
         run: |
@@ -115,21 +132,31 @@ jobs:
           hdiutil convert /tmp/ytb2pdf-rw.dmg -format UDZO -o ytb2pdf-macos-arm64.dmg
           rm -f /tmp/ytb2pdf-rw.dmg
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ytb2pdf-macos-arm64
           path: ytb2pdf-macos-arm64.dmg
-      - name: Bundle whisper.cpp
-        run: |
-          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
-          git clone --depth 1 https://github.com/ggerganov/whisper.cpp /tmp/whisper.cpp
-          cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/whisper.cpp/build -j --target whisper-cli
-          cp /tmp/whisper.cpp/build/bin/whisper-cli "$BIN/whisper-cli"
-          chmod +x "$BIN/whisper-cli"
-          rm -rf /tmp/whisper.cpp
-          ls -la "$BIN/"
 
-# Muốn hết cảnh báo Gatekeeper: cần Apple Developer certificate
-# (APPLE_CERT_P12, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID trong repo secrets)
-# để codesign + notarize. Chưa có thì lần đầu mở app: chuột phải → Open.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG_NAME="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
+              --target "$COMMIT_SHA" \
+              --title "Development build $TAG_NAME" \
+              --prerelease \
+              --generate-notes
+          else
+            gh release create "$TAG_NAME" ytb2pdf-macos-arm64.dmg \
+              --target "$COMMIT_SHA" \
+              --title "ytb2pdf $TAG_NAME" \
+              --generate-notes
+          fi
+# For trusted distribution, configure Apple Developer ID signing and notarization.
+# Without notarization, macOS Gatekeeper may require manual approval.
