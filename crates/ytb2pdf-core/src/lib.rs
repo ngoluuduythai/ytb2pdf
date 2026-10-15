@@ -12,6 +12,7 @@
 //! - `yt-dlp` for metadata / subtitles / video download
 //! - `ffmpeg` for frame extraction
 
+pub mod local_video;
 pub mod frames;
 pub mod pdf;
 pub mod pipeline;
@@ -22,4 +23,5 @@ pub mod whisper;
 pub mod youtube;
 
 pub use pipeline::{run_pipeline, PipelineConfig, PipelineEvent};
+pub use local_video::VideoInput;
 pub use subtitles::Segment;
