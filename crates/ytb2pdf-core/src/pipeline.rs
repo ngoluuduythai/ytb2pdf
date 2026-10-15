@@ -234,7 +234,7 @@ pub fn render_frames_pdf(
 ) -> Result<PathBuf> {
     // shrink kept frames so the PDF stays reasonable; 1920px stays crisp
     // when rendered large on the landscape pages
-    for f in &kept {
+    for f in kept {
         let _ = pdf::shrink_image(&f.path, 1920);
     }
 
