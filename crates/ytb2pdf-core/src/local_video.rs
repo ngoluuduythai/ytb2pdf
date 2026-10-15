@@ -123,10 +123,7 @@ fn get_captions(
     path: &Path, meta: &LocalVideoMetadata, cfg: &PipelineConfig,
     emit: &(dyn Fn(PipelineEvent) + Sync),
 ) -> Result<Vec<Segment>> {
-    if let Some(transcript) = cfg.transcript_file.as_ref()
-        .or_else(|| None)
-        .cloned()
-        .or_else(|| find_sidecar(path))
+    if let Some(transcript) = cfg.transcript_file.clone().or_else(|| find_sidecar(path))
     {
         emit(PipelineEvent::Stage("Reading local subtitles"));
         emit(PipelineEvent::Log(format!("Using subtitle file: {}", transcript.display())));
