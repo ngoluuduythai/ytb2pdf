@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).with_name('publish.sh').resolve()
 
 
 class PublishTests(unittest.TestCase):
-    def run_publish(self, existing, prerelease='false', missing=False, tag_missing=False):
+    def run_publish(self, existing, prerelease='false', missing=False, tag_missing=False, keep_draft=False):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -49,6 +49,7 @@ elif os.environ['TAG_MISSING'] != 'yes' or Path('tag-created').exists():
 ''')
         git.chmod(0o755)
         env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'], RELEASE_TAG='v1.2.3', RELEASE_PRERELEASE=prerelease, GITHUB_SHA='commit123', GITHUB_REPOSITORY='owner/repo', EXISTING=existing, MISSING='yes' if missing else 'no', TAG_MISSING='yes' if tag_missing else 'no')
+        env['KEEP_DRAFT'] = 'true' if keep_draft else 'false'
         result = subprocess.run(['bash', str(SCRIPT)], cwd=root, env=env, capture_output=True, text=True)
         calls = [json.loads(line) for line in (root / 'calls.jsonl').read_text().splitlines()]
         return result, calls
@@ -61,6 +62,12 @@ elif os.environ['TAG_MISSING'] != 'yes' or Path('tag-created').exists():
         publish = next(i for i, c in enumerate(calls) if c[:2] == ['release', 'edit'])
         self.assertLess(upload, publish)
         self.assertIn('--latest', calls[publish])
+
+    def test_verified_release_can_remain_draft(self):
+        result, calls = self.run_publish('absent', keep_draft=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(c[:2] == ['release', 'upload'] for c in calls))
+        self.assertFalse(any(c[:2] == ['release', 'edit'] for c in calls))
 
     def test_manual_release_creates_its_tag_before_the_draft(self):
         result, calls = self.run_publish('absent', tag_missing=True)

@@ -25,8 +25,8 @@ class PackageExtrasTests(unittest.TestCase):
             tools.mkdir(parents=True)
             (tools / 'ffmpeg').write_text('#!/bin/sh\nprintf "bundled-ffmpeg\\n"\n')
             (tools / 'ffmpeg').chmod(0o755)
-            (root / 'target/release').mkdir(parents=True)
-            binary = root / 'target/release/ytb2pdf-cli'
+            (app / 'Contents/MacOS').mkdir(parents=True)
+            binary = app / 'Contents/MacOS/ytb2pdf-cli'
             binary.write_text('#!/bin/sh\nffmpeg\nprintf "%s\\n" "$@"\n')
             binary.chmod(0o755)
             (root / f'{prefix}.dmg').write_bytes(b'original DMG')

@@ -14,11 +14,13 @@ for path in root.rglob("*"):
     if "arm64" not in kind:
         raise SystemExit(f"Missing arm64 architecture: {path}")
     links = subprocess.check_output(["otool", "-L", str(path)], text=True).splitlines()[1:]
-    # For dylibs the first entry is its install ID, not a dependency.
-    if path.suffix == ".dylib":
-        links = links[1:]
+    ids = {line.strip() for line in subprocess.check_output(
+        ['otool', '-D', str(path)], text=True).splitlines()
+        if line.strip().startswith(('/', '@')) and not line.rstrip().endswith(':')}
     for line in links:
         dependency = line.strip().split(" (", 1)[0]
+        if dependency in ids or dependency.endswith(':'):
+            continue
         if dependency.startswith("/") and not dependency.startswith(("/usr/lib/", "/System/Library/")):
             raise SystemExit(f"Non-relocatable dependency in {path}: {dependency}")
         if dependency.startswith("@rpath/"):

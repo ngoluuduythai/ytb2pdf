@@ -38,6 +38,10 @@ uploaded = {asset['name']: asset['size'] for asset in assets}
 for path in Path('dist/assets').iterdir():
     assert uploaded.get(path.name) == path.stat().st_size, f'Missing or incomplete upload: {path.name}'
 PY
+if [[ "${KEEP_DRAFT:-false}" == true ]]; then
+  echo "Release $RELEASE_TAG is verified and remains a draft for review."
+  exit 0
+fi
 if [[ "$RELEASE_PRERELEASE" == true ]]; then
   gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
 else

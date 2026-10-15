@@ -27,7 +27,7 @@ def main():
     if frameworks.exists():
         shutil.copytree(frameworks, cli / 'Contents/Frameworks', symlinks=True)
     (cli / 'Contents/MacOS').mkdir(parents=True)
-    shutil.copy2('target/release/ytb2pdf-cli', cli / 'Contents/MacOS/ytb2pdf-cli')
+    shutil.copy2(app / 'Contents/MacOS/ytb2pdf-cli', cli / 'Contents/MacOS/ytb2pdf-cli')
     launcher = cli / 'ytb2pdf'
     launcher.write_text('''#!/bin/sh
 set -eu
@@ -37,7 +37,7 @@ export PATH
 exec "$release_dir/Contents/MacOS/ytb2pdf-cli" "$@"
 ''')
     launcher.chmod(0o755)
-    installation = f'''ytb2pdf {info['version']} — macOS Apple Silicon (arm64)
+    installation = f'''ytb2pdf {info['version']} — Apple Silicon, macOS 14 or newer
 Source commit: {info['commit']}
 
 DMG: drag ytb2pdf-app.app into Applications.
@@ -48,10 +48,9 @@ CLI archive: extract and keep the entire folder together. Run:
 
 This build uses ad-hoc signing and is not Apple-notarized.
 If macOS blocks the app, review System Settings > Privacy & Security.
-Included tools: yt-dlp, FFmpeg, Deno and whisper-cli.
-Runtime independence from Homebrew is still being validated. PDF merging
-requires pdfunite (brew install poppler); ffprobe may also be required
-(brew install ffmpeg). Whisper runtime dependencies need further validation.
+Included tools: yt-dlp, FFmpeg, ffprobe, Poppler (pdfunite/pdfinfo), Deno
+and whisper-cli, with their non-system dynamic libraries bundled.
+The release workflow verifies relocated tools and offline PDF export.
 Whisper models download on first use. Translation requires a Gemini API key.
 
 Download all release assets into one folder, then verify:

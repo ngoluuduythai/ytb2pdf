@@ -6,10 +6,12 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import sys
 
 info = json.loads(Path('release-info.json').read_text())
 prefix = f"ytb2pdf-v{info['version']}-macos-arm64"
 assets = Path('dist/assets').resolve()
+verifier = Path('scripts/release/verify-runtime.py').resolve()
 with tempfile.TemporaryDirectory(prefix='ytb2pdf relocated ') as temporary:
     root = Path(temporary)
     subprocess.run(['ditto', '-x', '-k', str(assets / f'{prefix}.app.zip'), str(root)], check=True)
@@ -25,7 +27,17 @@ with tempfile.TemporaryDirectory(prefix='ytb2pdf relocated ') as temporary:
         actual = subprocess.check_output([str(executable), '--version'], env=env, text=True).strip()
         assert actual == expected, (actual, expected)
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
-    subprocess.run([str(tools / 'ffprobe'), '-version'], env=env, check=True)
+    # Inspect every Mach-O as well as restricting PATH: absolute Homebrew
+    # references could otherwise work on the runner despite a restricted PATH.
+    for bundle in (app, cli.parent):
+        subprocess.run([sys.executable, str(verifier), str(bundle)], check=True)
+        for tool, args in {
+            'ffmpeg': ['-version'], 'ffprobe': ['-version'],
+            'yt-dlp': ['--version'], 'deno': ['--version'],
+            'pdfunite': ['-v'], 'pdfinfo': ['-v'], 'whisper-cli': ['--help'],
+        }.items():
+            subprocess.run([str(bundle / 'Contents/Resources/bin' / tool), *args],
+                           env=env, check=True, timeout=30)
     video = root / 'test video.mp4'
     subtitles = root / 'test video.srt'
     subprocess.run([str(tools / 'ffmpeg'), '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=480x270:rate=5', '-t', '2', '-c:v', 'mpeg4', str(video)], env=env, check=True)

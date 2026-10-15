@@ -11,7 +11,7 @@ on:
         type: string
         required: false
       publish:
-        description: 'Publish a development prerelease after the build succeeds'
+        description: 'Create a draft release after all build and runtime checks pass'
         type: boolean
         required: false
         default: false
@@ -22,9 +22,20 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-macos:
     runs-on: macos-14 # Apple Silicon
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,13 +50,13 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          python3 -m unittest discover -s scripts/release -p 'test_prepare.py'
+          python3 -m unittest discover -s scripts/release -p 'test_*.py'
           python3 scripts/release/prepare.py
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install runtime deps (for tests)
-        run: brew install yt-dlp ffmpeg poppler
+        run: brew install yt-dlp ffmpeg poppler cmake
 
       - name: Build release
         run: cargo build --release -p ytb2pdf-app -p ytb2pdf-cli
@@ -84,7 +95,7 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>LSMinimumSystemVersion</key>
-              <string>11.0</string>
+              <string>14.0</string>
               <key>NSHighResolutionCapable</key>
               <true/>
           </dict>
@@ -120,13 +131,26 @@ jobs:
       - name: Bundle whisper.cpp
         run: |
           BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
-          git clone --depth 1 https://github.com/ggerganov/whisper.cpp /tmp/whisper.cpp
-          cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/whisper.cpp/build -j --target whisper-cli
-          cp /tmp/whisper.cpp/build/bin/whisper-cli "$BIN/whisper-cli"
+          WHISPER_SOURCE="$RUNNER_TEMP/ytb2pdf-whisper"
+          git clone --depth 1 --branch v1.8.2 https://github.com/ggml-org/whisper.cpp "$WHISPER_SOURCE"
+          cmake -S "$WHISPER_SOURCE" -B "$WHISPER_SOURCE/build" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DBUILD_SHARED_LIBS=OFF -DGGML_METAL_EMBED_LIBRARY=ON -DWHISPER_BUILD_TESTS=OFF
+          cmake --build "$WHISPER_SOURCE/build" -j 3 --target whisper-cli
+          cp "$WHISPER_SOURCE/build/bin/whisper-cli" "$BIN/whisper-cli"
           chmod +x "$BIN/whisper-cli"
-          rm -rf /tmp/whisper.cpp
           ls -la "$BIN/"
+
+      - name: Bundle and verify complete media runtime
+        run: |
+          BIN="dist/ytb2pdf-app.app/Contents/Resources/bin"
+          cp target/release/ytb2pdf-cli dist/ytb2pdf-app.app/Contents/MacOS/
+          for tool in ffprobe pdfunite pdfinfo; do
+            cp -L "$(command -v "$tool")" "$BIN/$tool"
+          done
+          python3 scripts/release/relocate-runtime.py dist/ytb2pdf-app.app
+          python3 scripts/release/verify-runtime.py dist/ytb2pdf-app.app
+          python3 scripts/release/bundle-metadata.py
 
       - name: Ad-hoc sign the .app
         run: codesign --force --deep --sign - "dist/ytb2pdf-app.app"  # Replace with Developer ID signing and notarization for distribution
@@ -170,9 +194,11 @@ jobs:
 
       - name: Package app ZIP, CLI archive and checksums
         run: |
-          python3 -m unittest discover -s scripts/release -p 'test_package_extras.py'
           python3 scripts/release/package-extras.py
           (cd dist/assets && shasum -a 256 -c SHA256SUMS.txt)
+
+      - name: Verify relocated app and CLI offline
+        run: python3 scripts/release/smoke.py
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -181,22 +207,38 @@ jobs:
           path: dist/assets/*
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: github.event_name == 'push' || inputs.publish
+      - name: Write validation summary
+        run: |
+          printf 'Validated version: %s\nSource: %s\n\n' "$YTB2PDF_VERSION" "$YTB2PDF_COMMIT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Relocated GUI/CLI, bundled tools and offline PDF exports passed.\n\n' >> "$GITHUB_STEP_SUMMARY"
+          cat dist/assets/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+
+  draft-release:
+    needs: build-macos
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ytb2pdf-v${{ needs.build-macos.outputs.version }}-macos-arm64
+          path: dist/assets
+      - name: Create verified draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.release.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
-          COMMIT_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ needs.build-macos.outputs.tag }}
+          RELEASE_PRERELEASE: ${{ needs.build-macos.outputs.prerelease }}
+          KEEP_DRAFT: 'true'
         run: |
-          RELEASE_ARGS=()
-          if [ "$IS_PRERELEASE" = true ]; then
-            RELEASE_ARGS+=(--prerelease --latest=false)
-          fi
-          gh release create "$TAG_NAME" dist/assets/* \
-            --target "$COMMIT_SHA" \
-            --title "ytb2pdf $TAG_NAME" \
-            "${RELEASE_ARGS[@]}" \
-            --generate-notes
+          (cd dist/assets && sha256sum -c SHA256SUMS.txt)
+          cp dist/assets/INSTALL.txt dist/RELEASE_NOTES.md
+          bash scripts/release/publish.sh
 # For trusted distribution, configure Apple Developer ID signing and notarization.
 # Without notarization, macOS Gatekeeper may require manual approval.
