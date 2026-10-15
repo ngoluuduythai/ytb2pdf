@@ -21,6 +21,9 @@ enum UiMsg {
 
 struct App {
     url: String,
+    use_local_file: bool,
+    local_file: Option<PathBuf>,
+    use_v2: bool,
     translate: bool,
     target_lang: String,
     gemini_api_key: String,
@@ -42,6 +45,9 @@ impl App {
         theme::install_font(&cc.egui_ctx);
         Self {
             url: String::new(),
+            use_local_file: false,
+            local_file: None,
+            use_v2: false,
             translate: true,
             target_lang: "vi".to_string(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
@@ -63,7 +69,12 @@ impl App {
             return;
         }
         let url = self.url.trim().to_string();
-        if url.is_empty() {
+        if self.use_local_file {
+            if self.local_file.as_ref().map(|p| p.is_file()) != Some(true) {
+                self.error = Some("Please select a valid local video file.".to_string());
+                return;
+            }
+        } else if url.is_empty() {
             self.error = Some("Please enter a YouTube URL.".to_string());
             return;
         }
@@ -77,6 +88,8 @@ impl App {
 
         let mut cfg = PipelineConfig::default();
         cfg.url = url;
+        cfg.local_file = if self.use_local_file { self.local_file.clone() } else { None };
+        cfg.v2 = self.use_v2;
         cfg.target_lang = self
             .translate
             .then(|| self.target_lang.trim().to_string())
@@ -86,9 +99,12 @@ impl App {
         cfg.whisper_model = self.whisper_model;
         cfg.cookies_file = self.cookies_file.clone();
         cfg.transcript_file = self.transcript_file.clone();
-        let video_id = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
-            .map(|v| v.id)
-            .unwrap_or_else(|_| "video".to_string());
+        let video_id = if let Some(p) = &cfg.local_file {
+            p.file_stem().and_then(|s| s.to_str()).unwrap_or("video").to_string()
+        } else {
+            ytb2pdf_core::youtube::parse_youtube_url(&cfg.url)
+                .map(|v| v.id).unwrap_or_else(|_| "video".to_string())
+        };
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         cfg.work_dir = PathBuf::from(format!("{home}/.ytb2pdf/work-{video_id}"));
         cfg.out_pdf = PathBuf::from(format!("{home}/Desktop/ytb2pdf-{video_id}.pdf"));
@@ -191,7 +207,7 @@ impl eframe::App for App {
                     ui.vertical(|ui| {
                         ui.add_space(4.0);
                         ui.label(
-                            egui::RichText::new("YouTube » PDF")
+                            egui::RichText::new("Video » PDF")
                                 .heading()
                                 .strong()
                                 .color(theme::TEXT),
@@ -218,14 +234,36 @@ impl eframe::App for App {
             theme::section(ui, "SOURCE");
             theme::card(ui, |ui| {
                 ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Link YouTube").color(theme::TEXT_DIM));
-                ui.add_enabled(
-                !self.running,
-                egui::TextEdit::singleline(&mut self.url)
-                .hint_text("https://youtu.be/…")
-                .desired_width(f32::INFINITY),
-                );
+                    ui.add_enabled_ui(!self.running, |ui| {
+                        ui.radio_value(&mut self.use_local_file, false, "YouTube URL");
+                        ui.radio_value(&mut self.use_local_file, true, "Local Video File");
+                    });
                 });
+                if self.use_local_file {
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(!self.running, egui::Button::new("Choose Video File…")).clicked() {
+                            if let Some(file) = rfd::FileDialog::new()
+                                .add_filter("Video files", &["mp4", "mov", "mkv", "webm", "avi"])
+                                .pick_file()
+                            {
+                                self.local_file = Some(file);
+                            }
+                        }
+                        if let Some(file) = &self.local_file {
+                            ui.label(file.file_name().unwrap_or_default().to_string_lossy().to_string());
+                        } else {
+                            ui.label("No video selected");
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("YouTube URL").color(theme::TEXT_DIM));
+                        ui.add_enabled(!self.running,
+                            egui::TextEdit::singleline(&mut self.url)
+                                .hint_text("https://youtu.be/…")
+                                .desired_width(f32::INFINITY));
+                    });
+                }
                 ui.add_space(4.0);
                 // Optional transcript import: skips YouTube captions AND Whisper.
                 ui.horizontal(|ui| {
@@ -282,6 +320,7 @@ impl eframe::App for App {
 
             // ---- options ----
             theme::section(ui, "OPTIONS");
+            ui.add_enabled(!self.running, egui::Checkbox::new(&mut self.use_v2, "Scene-aware V2 processing (experimental)"));
             egui::Grid::new("options")
                 .num_columns(2)
                 .spacing([12.0, 8.0])
