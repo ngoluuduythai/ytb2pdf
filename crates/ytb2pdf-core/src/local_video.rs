@@ -75,12 +75,16 @@ pub fn probe_metadata(path: &Path) -> Result<LocalVideoMetadata> {
     if !path.is_file() {
         bail!("Video file not found or not a regular file: {}", path.display());
     }
-    let output = Command::new("ffprobe")
+    let output = match Command::new("ffprobe")
         .args(["-v", "error", "-show_entries", "format=duration:stream=codec_type,duration",
                "-of", "json"])
         .arg(path)
         .output()
-        .context("ffprobe is required to read local video metadata")?;
+        {
+            Ok(output) => output,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return probe_with_ffmpeg(path),
+            Err(e) => return Err(e).context("Failed to launch ffprobe"),
+        };
     if !output.status.success() {
         bail!("Cannot read local video {}: {}",
               path.display(), String::from_utf8_lossy(&output.stderr).trim());
@@ -109,6 +113,40 @@ pub fn probe_metadata(path: &Path) -> Result<LocalVideoMetadata> {
         title,
         duration_secs: duration.ceil() as u64,
         has_audio,
+    })
+}
+
+/// Bundled macOS builds ship FFmpeg but may not include ffprobe. Read the
+/// standard FFmpeg stream summary as a compatibility fallback.
+fn probe_with_ffmpeg(path: &Path) -> Result<LocalVideoMetadata> {
+    let output = Command::new("ffmpeg")
+        .args(["-hide_banner", "-i"])
+        .arg(path)
+        .output()
+        .context("Neither ffprobe nor ffmpeg can read local media")?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("Video:") {
+        bail!("No decodable video stream found in {}", path.display());
+    }
+    let token = stderr.lines()
+        .find_map(|line| line.split("Duration: ").nth(1))
+        .and_then(|s| s.split(',').next())
+        .ok_or_else(|| anyhow!("Unable to determine video duration: {}", path.display()))?;
+    let numbers: Vec<f64> = token.trim().split(':')
+        .map(|part| part.parse::<f64>())
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("Invalid duration in FFmpeg output")?;
+    if numbers.len() != 3 {
+        bail!("Unexpected duration format in FFmpeg output");
+    }
+    let duration = numbers[0] * 3600.0 + numbers[1] * 60.0 + numbers[2];
+    if !duration.is_finite() || duration <= 0.0 {
+        bail!("Invalid video duration: {}", path.display());
+    }
+    Ok(LocalVideoMetadata {
+        title: path.file_stem().and_then(|s| s.to_str()).unwrap_or("Local Video").to_owned(),
+        duration_secs: duration.ceil() as u64,
+        has_audio: stderr.contains("Audio:"),
     })
 }
 
