@@ -113,8 +113,14 @@ impl App {
             let send = |m: UiMsg| {
                 let _ = tx.send(m);
             };
-            let res = run_pipeline(
-                &cfg,
+            let run = |emit: &(dyn Fn(PipelineEvent) + Sync)| {
+                if cfg.v2 && cfg.local_file.is_none() {
+                    ytb2pdf_core::v2::pipeline::run_v2_pipeline(&cfg, emit)
+                } else {
+                    run_pipeline(&cfg, emit)
+                }
+            };
+            let res = run(
                 &|ev| match ev {
                     PipelineEvent::Stage(s) => send(UiMsg::Stage(s.to_string())),
                     PipelineEvent::Progress { done, total } => {
@@ -525,7 +531,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "YouTube → PDF",
+        "Video → PDF",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
