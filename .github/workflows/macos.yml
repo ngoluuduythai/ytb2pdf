@@ -5,6 +5,12 @@ name: macOS build
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a development prerelease after the build succeeds'
+        type: boolean
+        required: false
+        default: false
   push:
     tags:
       - 'v*'
@@ -139,6 +145,7 @@ jobs:
           path: ytb2pdf-macos-arm64.dmg
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
