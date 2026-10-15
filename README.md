@@ -1,95 +1,323 @@
-# ytb2pdf — YouTube → PDF
+# ytb2pdf
 
-Desktop app (macOS trước) biến video YouTube dài — bài giảng, tutorial nhiều hình ảnh —
-thành tài liệu PDF: mỗi đoạn caption đi kèm frame hình đúng thời điểm đó, loại bỏ ảnh
-trùng, tuỳ chọn dịch caption (VD: Anh → Việt).
+**Turn long videos into structured, readable PDF documents.**
 
+ytb2pdf is an open-source Rust application that converts YouTube videos **and local video files**—lectures, technical tutorials, presentations, recordings, and educational content—into PDF documents combining meaningful video frames with timestamped transcripts.
+
+Instead of repeatedly scrubbing through a multi-hour video to find a diagram or explanation, you can review its visual content and accompanying text in a document.
+
+> **Project status (October 2026):** Active development. Caption-driven **V1**, experimental scene-aware **V2**, and **local video input** are implemented in the CLI and desktop app. Local input passed Rust workspace compilation and offline PDF integration tests on macOS CI. Long-video benchmarks and wider platform validation remain open. AI-powered summarization is planned, not implemented.
+
+## Why ytb2pdf?
+
+Video is excellent for demonstrations, but not always ideal for reference and review. A two-hour lecture may contain useful diagrams, explanations, and examples that are difficult to revisit quickly.
+
+ytb2pdf helps make that content easier to work with:
+
+- **Study and review:** Convert long lectures into materials you can read at your own pace.
+- **Technical documentation:** Preserve important frames and explanations from programming tutorials and engineering walkthroughs.
+- **Research and note-taking:** Keep timestamped visual references from educational videos in one document.
+- **Language learning:** Read original subtitles alongside optional translations.
+- **Offline reference:** Save a PDF for later reading without replaying the entire video.
+
+The goal is **not** to replace the original video. It is to make valuable video content easier to revisit, organize, and learn from.
+
+## Features
+
+- Convert **YouTube URLs or local video files** into PDF documents (MP4, MOV, MKV, WebM and other formats supported by your FFmpeg build).
+- Select local videos in the desktop app using a file picker or drag and drop.
+- Extract and normalize subtitles in SRT, VTT, and JSON3 formats; for local videos, use explicit transcripts, same-basename sidecars, or the first compatible embedded text subtitle track.
+- Capture video frames aligned with subtitle timestamps in the default V1 pipeline.
+- Use **experimental V2 (`--v2`)** to detect scenes on low-resolution proxies. For YouTube, download selected higher-resolution segments; for local files, extract full-resolution frames directly from the source.
+- Fall back to local Whisper speech recognition when captions are unavailable (requires `whisper-cli` and a downloaded model; YouTube V1 and local files).
+- Reduce redundant images using perceptual hashing (dHash).
+- Include timestamps, original captions, and optional translations.
+- Translate subtitles with Gemini when configured.
+- Run through a command-line interface or a native desktop application.
+- Track pipeline progress while processing a video.
+
+### How it works
+
+```text
+YouTube URL or local video file
+    |
+    v
+Source metadata + captions
+(yt-dlp for YouTube / FFmpeg and files for local video)
+    |
+    v
+Subtitle parsing and normalization
+    |
+    +----> Optional translation (Gemini)
+    |
+    v
+Video acquisition (YouTube only) + frame extraction (FFmpeg)
+    |
+    v
+Duplicate-frame filtering (dHash)
+    |
+    v
+PDF generation
+    |
+    v
+Timestamped frames + captions + optional translations
 ```
-YouTube URL → metadata → caption → (dịch) → tải video 720p
-            → chụp frame tại timestamp mỗi caption → loại frame trùng (dHash)
-            → dựng PDF (bìa + [timestamp | ảnh | caption gốc | bản dịch])
+
+**V1 (default)** captures frames around subtitle timestamps and filters duplicates. **V2 (opt-in)** detects scene changes using a low-resolution proxy, extracts selected frames, and maps captions to the resulting scenes. V2 is implemented but remains under evaluation, and output can differ from V1. See the [Architecture V2 Plan](docs/architecture-v2-plan.md).
+
+### Architecture V2: bandwidth-aware frame extraction
+
+```text
+YouTube URL + captions
+         |
+         v
+Download low-resolution proxy (240p target)
+         |
+         v
+Detect visual changes (FFmpeg scene score + periodic sampling)
+         |
+         v
+Group scene timestamps into download segments
+         |
+         v
+Download selected higher-resolution segments in parallel
+         |
+         v
+Extract scene frames and map captions to frames
+         |
+         v
+Build illustrated, timestamped PDF
 ```
 
-## Kiến trúc
+V2 remains optional. With YouTube input, it aims to reduce network downloads by selecting video sections. With **local input**, it creates a small analysis proxy and seeks directly in the original file instead of downloading segments. The YouTube V2 pipeline does not currently translate subtitles; use V1 when you need translation of YouTube captions.
 
-Học theo [FilmCraft](https://github.com/storytold/filmcraft): workspace nhiều lớp,
-engine tách hẳn khỏi UI.
+## Getting started
 
-```
-crates/
-  ytb2pdf-core/   engine, không biết gì về UI
-    youtube.rs    parse URL + gọi yt-dlp (metadata, caption, tải video)
-    subtitles.rs  parse SRT/VTT/JSON3, chuẩn hoá caption
-    frames.rs     ffmpeg chụp frame + dHash loại ảnh trùng
-    translate.rs  trait Translator; GeminiTranslator (batch, pace theo free-tier)
-    pdf.rs        dựng PDF bằng genpdf (pure Rust)
-    pipeline.rs   chạy các stage theo thứ tự, báo progress qua callback
-  ytb2pdf-cli/    CLI: ytb2pdf <url> [--to vi] [--cookies-from-browser chrome]
-  ytb2pdf-app/    app desktop native bằng egui (chạy pipeline trên worker thread)
-```
+### Prerequisites
 
-**Không link FFmpeg/yt-dlp vào binary** — gọi qua CLI ngoài. yt-dlp bám YouTube sát hơn
-bất kỳ lib Rust nào; ffmpeg thì khỏi bàn.
+- Rust stable (tested with Rust 1.99)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) available on your `PATH` (**YouTube URLs only**)
+- [FFmpeg](https://ffmpeg.org/) available on your `PATH` (required for frame extraction, metadata probing, and local video processing)
+- Optional: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) `whisper-cli` for transcription when captions are missing (bundled in the macOS packaging workflow; model downloaded on first use)
+- Optional: a Gemini API key for subtitle translation
 
-## Yêu cầu
-
-- Rust stable (đã test với 1.99)
-- `yt-dlp` và `ffmpeg` có trên PATH
-- Dịch caption: `GEMINI_API_KEY` (key free từ aistudio.google.com)
-
-## Chạy thử
-
-```sh
-# CLI
-cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --to vi
-
-# V2 mode: tiết kiệm bandwidth cho video dài (detect scene ở 240p, chỉ tải đoạn cần ở 720p)
-cargo run -p ytb2pdf-cli -- "https://youtu.be/..." --v2 --cookies cookies.txt
-
-# Text-only: PDF nhẹ cho mobile (chỉ caption, không ảnh)
-cargo run -p ytb2pdf-cli -- "https://youtu.be/..." --text-only --cookies cookies.txt
-
-# App desktop
-cargo run -p ytb2pdf-app
-```
-
-App lưu PDF ra `~/Desktop/ytb2pdf-<id>.pdf`, file tạm ở `~/.ytb2pdf/`.
-
-> Gặp HTTP 403 / "Sign in to confirm you're not a bot" (mạng nhà hay bị):
-> điền tên browser vào ô "Cookie từ browser" (vd `chrome`) để yt-dlp mượn cookie
-> đăng nhập YouTube của anh.
-
-## Đóng gói macOS
-
-`cargo build` trên Linux **không** ra được binary macOS. Cách làm (như FilmCraft):
-GitHub Actions chạy trên `macos-14` (Apple Silicon), build release rồi gói `.dmg`
-bằng `hdiutil` — xem `.github/workflows/macos.yml`. Muốn ký + notarize thì thêm
-Apple Developer certificate vào repo secrets (đang để TODO).
-
-## TODO
-
-- [ ] Nhúng font Việt mặc định vào binary (hiện tại tự tìm DejaVu/Arial trên máy)
-- [ ] Chọn frame thông minh hơn: scene-change detection thay vì midpoint mỗi caption
-- [ ] Whisper fallback khi video không có caption (tái dùng pipeline mini-youglish)
-- [ ] Ký + notarize .dmg (cần Apple Developer cert)
-- [ ] Đặt tên app chính thức (hiện tại là `ytb2pdf` tạm)
-
-
-## Local video files (experimental)
-
-In addition to YouTube URLs, the CLI and native desktop application now support locally stored videos. Video data stays on your device; external network access may be required only for optional Gemini translation or the first Whisper model download.
+Make sure the required commands are available:
 
 ```bash
-# Convert a video and an existing SRT transcript
-cargo run -p ytb2pdf-cli -- "./lecture.mp4" --transcript "./lecture.srt" --out lecture.pdf
+rustc --version
+cargo --version
+yt-dlp --version
+ffmpeg -version
+```
 
-# Let Whisper generate a transcript if there are no subtitles
-cargo run -p ytb2pdf-cli -- "./meeting.mov" --whisper-model medium --out meeting.pdf
+### Clone the repository
 
-# Scene-aware local processing (experimental)
+```bash
+git clone https://github.com/ngoluuduythai/ytb2pdf.git
+cd ytb2pdf
+```
+
+### Run the CLI
+
+```bash
+cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0"
+```
+
+To request Vietnamese subtitle translation:
+
+```bash
+export GEMINI_API_KEY="your-api-key"
+cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --to vi
+```
+
+### Try the V2 pipeline (CLI)
+
+```bash
+cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --v2 --out lecture-v2.pdf
+```
+
+Optional controls include `--quality 720`, `--jobs 4`, `--transcript path/to/file.srt`, and `--json` for machine-readable progress events. **YouTube V2 currently requires captions** (either downloaded or supplied with `--transcript`); unlike V1, it does not yet fall back to Whisper.
+
+### Convert a local video file
+
+Local video files are processed **on your device**. You do not need YouTube or `yt-dlp` for local conversion. Supported containers and codecs depend on your FFmpeg build.
+
+```bash
+# Convert a local video with an explicit subtitle file
+cargo run -p ytb2pdf-cli -- "./lecture.mp4" \
+  --transcript "./lecture.srt" --out lecture.pdf
+
+# Same-basename sidecars are discovered automatically:
+# lecture.mp4 + lecture.srt (or lecture.vtt)
+cargo run -p ytb2pdf-cli -- "./lecture.mp4" --out lecture.pdf
+
+# If no usable subtitles exist, transcribe locally with Whisper
+cargo run -p ytb2pdf-cli -- "./meeting.mov" \
+  --whisper-model medium --out meeting.pdf
+
+# Experimental scene-aware processing for a local recording
 cargo run -p ytb2pdf-cli -- "./long-course.mkv" --v2 --out long-course.pdf
 ```
 
-The desktop app offers **YouTube URL** and **Local Video File** source modes. Supported containers depend on the FFmpeg codecs available (common examples: MP4, MOV, MKV, WebM, AVI). Sidecar transcripts with the same basename (`lecture.mp4` and `lecture.srt`) are detected automatically. Video files without transcripts need an audio track and `whisper-cli` for local transcription. Local PDF footers display timestamps rather than fabricated YouTube hyperlinks.
+For local media, ytb2pdf tries an explicit transcript, a matching SRT/VTT sidecar, then the first compatible embedded text-subtitle stream. If none works and the file has audio, it falls back to Whisper. First-time Whisper model downloads require internet access; **Gemini translation sends captions to a third-party service only when enabled**.
 
-This feature is under active development. Embedded subtitle streams, drag-and-drop, exhaustive cross-platform validation, and richer metadata controls are planned. See [Local Video Input Plan](docs/local-video-input-plan.md) for the full scope.
+Local PDFs display **video timestamps** without fabricated YouTube links or embedded absolute file paths. The local V2 pipeline analyzes a low-resolution proxy but extracts final images from the original file. See the [Local Video Input Plan](docs/local-video-input-plan.md).
+
+### Run the desktop app
+
+```bash
+cargo run -p ytb2pdf-app
+```
+
+The desktop app lets you switch between **YouTube URL** and **Local Video File**, choose a file or drop it into the app, and optionally enable scene-aware V2 processing. It writes generated PDFs to `~/Desktop/ytb2pdf-<video-id-or-filename>.pdf` and uses `~/.ytb2pdf/` for temporary work files.
+
+### YouTube authentication issues
+
+If YouTube returns HTTP 403 or asks you to confirm that you are not a bot, yt-dlp may need access to cookies from a browser where you are already signed in.
+
+For example:
+
+```bash
+cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --cookies-from-browser chrome
+```
+
+Only use accounts and videos you are authorized to access. Keep browser cookies, credentials, and API keys private.
+
+## V2 implementation status and measured results
+
+The [V2 implementation plan](docs/architecture-v2-plan.md) reports the following status as of **October 15, 2026**:
+
+| Workstream | Status |
+| --- | --- |
+| Validate selective downloading with `yt-dlp --download-sections` | Complete |
+| Low-resolution proxy, scene detection, and segment planning | Implemented |
+| Parallel higher-resolution segment downloads | Implemented |
+| Frame extraction, caption-to-scene mapping, and `--v2` CLI integration | Implemented |
+| End-to-end test on a 30-minute video | Completed |
+| Validation on videos longer than three hours | Pending |
+| Further tuning for output parity and bandwidth savings | Ongoing |
+
+**Reported 30-minute benchmark (not a general performance guarantee):**
+
+| Metric | V1 | V2 |
+| --- | --- | --- |
+| Downloaded data | 101 MB | 76 MB (about 25% less) |
+| Visual/caption-derived scenes | 110 | 94 |
+| PDF output | 104 MB / 110 pages | 80 MB / 85 pages |
+| Frame resolution | 720p | 720p |
+
+V2 produced **about 23% fewer pages**, exceeding the plan's target of staying within ±10% of V1. The goal of downloading under 20% of V1's data on videos longer than one hour **has not yet been validated**. Longer-video savings remain a hypothesis, not a measured result.
+
+The plan also documents robustness work: less frequent fallback sampling, skipping frames that cannot be extracted, and chunked PDF generation for very large documents. It reports a completed 7,628-page CS50 PDF and a much smaller text-only PDF experiment; however, **the current CLI does not expose a `--text-only` flag**, so it is not documented here as a runnable CLI option.
+
+## Architecture
+
+ytb2pdf uses a Rust workspace with a reusable processing engine separated from its interfaces.
+
+```text
+crates/
+├── ytb2pdf-core/       # Processing engine independent of the UI
+│   ├── youtube.rs      # YouTube URL parsing, metadata, subtitles, downloads
+│   ├── local_video.rs  # Local source validation, FFmpeg metadata, subtitles, V1/V2
+│   ├── subtitles.rs    # SRT/VTT/JSON3 parsing and normalization
+│   ├── frames.rs       # FFmpeg frame extraction and dHash filtering
+│   ├── translate.rs    # Translator abstraction and Gemini implementation
+│   ├── pdf.rs          # PDF generation with genpdf
+│   ├── pipeline.rs     # V1 pipeline orchestration and progress callbacks
+│   ├── whisper.rs      # Local speech-to-text fallback
+│   └── v2/             # Proxy, scene detection, segment planning, high-res extraction, mapping, pipeline
+├── ytb2pdf-cli/        # Command-line interface
+└── ytb2pdf-app/        # Native desktop UI built with egui
+```
+
+**Design principles**
+
+- **Separation of concerns:** The core engine does not depend on the desktop UI.
+- **Composable stages:** Subtitle processing, translation, frame extraction, and PDF generation are distinct steps.
+- **Pragmatic dependencies:** yt-dlp (YouTube) and FFmpeg (all video sources) are called as external executables rather than linked into the Rust binary.
+- **Local-first processing:** Local video files are processed on the user's machine, without uploading the video to a remote service.
+- **Extensibility:** New frame-selection strategies, translation providers, and document-processing stages can be added over time.
+
+## Roadmap
+
+The longer-term vision is to turn lengthy educational videos into **useful, searchable learning documents**, rather than simply exporting screenshots.
+
+### Planned improvements
+
+- [x] Scene-aware V2 pipeline with low-resolution proxy and selective higher-resolution downloads (opt-in CLI)
+- [x] Speech-to-text fallback in V1 using Whisper
+- [ ] Validate V2 on 3+ hour videos and measure actual bandwidth/time savings
+- [ ] Improve V2 scene selection and V1/V2 PDF page-count parity
+- [x] Support local video input through CLI and desktop file picker / drag and drop
+- [x] Add local scene-aware V2 processing and an offline PDF integration test
+- [x] Expose experimental V2 processing in the desktop app
+- [ ] Improve YouTube V2 translation and Whisper support
+- [ ] Support explicit selection among multiple embedded subtitle tracks
+- [ ] Validate local files across platforms and a broader set of codecs
+- [ ] Improve bundled font coverage, including Vietnamese
+- [ ] macOS code signing and notarization
+- [ ] Improved application branding and packaging
+
+### Future exploration: AI-assisted documents
+
+- [ ] Summarize long videos into concise, structured notes
+- [ ] Identify key concepts, chapters, and takeaways
+- [ ] Produce topic-based summaries with references to video timestamps
+- [ ] Preserve relevant diagrams and screenshots alongside summaries
+- [ ] Offer different document formats for learning, research, and technical reference
+
+Unchecked items are future improvements and are **not yet implemented**. Priorities may change based on feedback and contributions.
+
+## Contributing
+
+Contributions are welcome, whether you are fixing a bug, improving documentation, proposing a feature, or working on the processing pipeline.
+
+### Ways to contribute
+
+- Report reproducible bugs and platform-specific issues.
+- Suggest improvements to frame selection, subtitle handling, translation, or PDF layout.
+- Improve documentation, examples, and accessibility.
+- Add tests and improve performance.
+- Discuss and prototype future AI-assisted summarization features.
+
+### Development workflow
+
+1. Check [existing issues](https://github.com/ngoluuduythai/ytb2pdf/issues) and [pull requests](https://github.com/ngoluuduythai/ytb2pdf/pulls) to avoid duplicate work.
+2. For substantial changes, open an issue first to discuss the approach.
+3. Fork the repository and create a focused feature branch.
+4. Make your changes, including tests or documentation where appropriate.
+5. Run local checks:
+
+   ```bash
+   cargo fmt --all -- --check
+   cargo check --workspace
+   cargo test --workspace
+   ```
+
+6. Open a pull request with a clear description of the problem, the solution, and how you tested it.
+
+Please keep pull requests reasonably scoped. For changes that affect generated PDFs, before/after examples are especially helpful. Do not commit API keys, browser cookies, downloaded copyrighted videos, or large generated artifacts.
+
+### Good first contributions
+
+Not sure where to start? Documentation improvements, small bug fixes, test coverage, and clearer error messages are all valuable. Browse the [issue tracker](https://github.com/ngoluuduythai/ytb2pdf/issues) or open a discussion through an issue to propose an idea.
+
+## Building for macOS
+
+A Linux build does not produce a native macOS executable. The project includes a macOS GitHub Actions workflow at [`.github/workflows/macos.yml`](.github/workflows/macos.yml) for building and packaging an Apple Silicon (`arm64`) `.dmg`. Tagged builds (`v*`) publish to [GitHub Releases](https://github.com/ngoluuduythai/ytb2pdf/releases); manual workflow runs publish prereleases. Availability depends on successful workflow execution.
+
+Code signing and notarization remain planned improvements and require appropriate Apple Developer credentials.
+
+## Acknowledgments
+
+The workspace architecture draws inspiration from [FilmCraft](https://github.com/storytold/filmcraft).
+
+ytb2pdf builds on the work of the open-source communities behind [Rust](https://www.rust-lang.org/), [yt-dlp](https://github.com/yt-dlp/yt-dlp), [FFmpeg](https://ffmpeg.org/), and related libraries.
+
+## License
+
+See the repository's license information for applicable terms. If no license has been published, please note that public source availability alone does not grant permission to redistribute or modify the project.
+
+---
+
+**Feedback and contributions help shape the project.** If ytb2pdf is useful to you, consider opening an issue, contributing a fix, or starring the repository.
