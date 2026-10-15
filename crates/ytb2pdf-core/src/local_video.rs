@@ -260,12 +260,19 @@ pub fn run_local_pipeline(
         captions.iter().map(|s| s.midpoint()).collect()
     };
     let total = timestamps.len();
-    let frames = capture_frames(path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
-        emit(PipelineEvent::Progress { done, total });
-    })?;
-    emit(PipelineEvent::Stage("Removing duplicate frames"));
-    let frames = dedupe_frames(frames, cfg.dhash_threshold);
-    emit(PipelineEvent::Log(format!("Kept {} / {} frames", frames.len(), total)));
+    // Text-only mode: skip frame capture entirely (no images needed).
+    let frames = if cfg.text_only {
+        emit(PipelineEvent::Log("Text-only mode: skipping frame capture".to_string()));
+        Vec::new()
+    } else {
+        let frames = capture_frames(path, &timestamps, &frame_dir, cfg.jobs, &|done, _| {
+            emit(PipelineEvent::Progress { done, total });
+        })?;
+        emit(PipelineEvent::Stage("Removing duplicate frames"));
+        let frames = dedupe_frames(frames, cfg.dhash_threshold);
+        emit(PipelineEvent::Log(format!("Kept {} / {} frames", frames.len(), total)));
+        frames
+    };
     let doc_meta = PdfMeta {
         title: meta.title,
         uploader: "Local Video".to_owned(),
