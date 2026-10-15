@@ -77,12 +77,12 @@ pub struct PdfMeta {
     pub title: String,
     pub uploader: String,
     pub duration_secs: u64,
-    pub source_url: String,
+    pub source_url: Option<String>,
 }
 
 pub struct PdfBlock {
     pub timestamp_secs: f64,
-    pub deep_link: String,
+    pub deep_link: Option<String>,
     pub caption: String,
     pub caption_translated: Option<String>,
     pub image: Option<PathBuf>,
@@ -303,12 +303,13 @@ struct FrameDecorator {
     bg: image023::DynamicImage,
     title: String,
     kicker: String,
-    urls: Vec<String>,
+    urls: Vec<Option<String>>,
+    timestamps: Vec<f64>,
     page_idx: usize,
 }
 
 impl FrameDecorator {
-    fn new(meta: &PdfMeta, urls: Vec<String>) -> Self {
+    fn new(meta: &PdfMeta, urls: Vec<Option<String>>, timestamps: Vec<f64>) -> Self {
         let mut px = image023::RgbImage::new(1, 1);
         px.put_pixel(0, 0, image023::Rgb([BG.0, BG.1, BG.2]));
         Self {
@@ -316,6 +317,7 @@ impl FrameDecorator {
             title: meta.title.to_uppercase(),
             kicker: format!("ORIGINAL VIDEO FRAME  /  {}", meta.uploader.to_uppercase()),
             urls,
+            timestamps,
             page_idx: 0,
         }
     }
@@ -367,9 +369,13 @@ impl PageDecorator for FrameDecorator {
             &context.font_cache,
             Position::new(Mm::from(TEXT_X_MM), baseline_y(LABEL_BASE_MM, 8.0)),
             label_style,
-            "YouTube reference",
+            if self.urls.get(self.page_idx).and_then(|link| link.as_ref()).is_some() {
+                "YouTube reference"
+            } else {
+                "VIDEO TIMESTAMP"
+            },
         );
-        if let Some(url) = self.urls.get(self.page_idx) {
+        if let Some(url) = self.urls.get(self.page_idx).and_then(|url| url.as_ref()) {
             let url_style = Style::new().with_font_size(9).with_color(rgb(URL_C));
             let _ = area.print_str(
                 &context.font_cache,
@@ -377,6 +383,11 @@ impl PageDecorator for FrameDecorator {
                 url_style,
                 url,
             );
+        } else {
+            let timestamp = self.timestamps.get(self.page_idx).copied().unwrap_or(0.0);
+            let text = format_timestamp(timestamp);
+            let style = Style::new().with_font_size(9).with_color(rgb(URL_C));
+            let _ = area.print_str(&context.font_cache, Position::new(Mm::from(TEXT_X_MM), baseline_y(URL_BASE_MM, 9.0)), style, &text);
         }
         self.page_idx += 1;
         // 4. flow area for frame + captions: the band between header and
@@ -421,7 +432,7 @@ fn frame_box_h(caption: &str, translated: Option<&str>) -> f64 {
 /// on every page. genpdf/printpdf 0.3 cannot emit link annotations, so they
 /// are added afterwards with lopdf. The footer URL sits at a fixed rect on
 /// every page (see [`FrameDecorator`]), so one constant rect works for all.
-fn add_link_annotations(pdf_path: &Path, urls: &[String]) -> Result<()> {
+fn add_link_annotations(pdf_path: &Path, urls: &[Option<String>]) -> Result<()> {
     let mut doc = lopdf::Document::load(pdf_path).context("re-opening rendered PDF")?;
     let pages = doc.get_pages();
     if pages.len() != urls.len() {
@@ -442,6 +453,7 @@ fn add_link_annotations(pdf_path: &Path, urls: &[String]) -> Result<()> {
         lopdf::Object::Real(30.0),
     ]);
     for ((_n, page_id), url) in pages.iter().zip(urls.iter()) {
+        let Some(url) = url else { continue; };
         let annot_id = doc.new_object_id();
         let annot = lopdf::dictionary! {
             "Type" => "Annot",
@@ -488,8 +500,9 @@ pub fn build_pdf(
 
     doc.set_title(&meta.title);
     doc.set_paper_size(Size::new(PAGE_W_MM, PAGE_H_MM));
-    let urls: Vec<String> = blocks.iter().map(|b| b.deep_link.clone()).collect();
-    doc.set_page_decorator(FrameDecorator::new(meta, urls.clone()));
+    let urls: Vec<Option<String>> = blocks.iter().map(|b| b.deep_link.clone()).collect();
+    let timestamps: Vec<f64> = blocks.iter().map(|b| b.timestamp_secs).collect();
+    doc.set_page_decorator(FrameDecorator::new(meta, urls.clone(), timestamps));
 
     let caption_style = Style::new()
         .bold()
@@ -541,8 +554,10 @@ pub fn build_pdf(
         .with_context(|| format!("writing PDF to {}", out.display()))?;
 
     // Clickable "YouTube reference" links: a nicety, never fatal.
+    if urls.iter().any(Option::is_some) {
     if let Err(e) = add_link_annotations(out, &urls) {
         eprintln!("warning: could not add PDF link annotations: {e:#}");
+    }
     }
     Ok(())
 }
