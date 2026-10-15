@@ -110,10 +110,25 @@ pub fn capture_frames(
                     let i = start_idx + j;
                     let path = out_dir.join(format!("frame_{i:05}.jpg"));
                     if !path.exists() {
-                        extract_frame(&video, t, &path)?;
+                        // Skip frames that can't be extracted (e.g. beyond
+                        // video duration) instead of failing the whole run.
+                        if extract_frame(&video, t, &path).is_err() {
+                            let _ = std::fs::remove_file(&path);
+                            let n =
+                                done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            on_one(n, total);
+                            continue;
+                        }
                     }
-                    let img = image::open(&path)
-                        .with_context(|| format!("reading back {}", path.display()))?;
+                    let img = match image::open(&path) {
+                        Ok(img) => img,
+                        Err(_) => {
+                            let n =
+                                done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            on_one(n, total);
+                            continue;
+                        }
+                    };
                     frames.push(Frame {
                         at_secs: t,
                         path,
