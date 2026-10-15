@@ -1,1 +1,252 @@
-IyBBcmNoaXRlY3R1cmUgVjIgUGxhbiDigJQgTG93LXJlcyBEZXRlY3Rpb24sIEhpZ2gtcmVzIEV4dHJhY3Rpb24KCioqU3RhdHVzOioqIOKchSBJbXBsZW1lbnRlZCAmIFRlc3RlZCAoMjAyNi0xMC0xNSkKKipBdXRob3I6KiogRGFpc3kgKHbhu5tpIGlucHV0IGtp4bq/biB0csO6YyB04burIFRow6FpKQoqKlZhbGlkYXRpb246Kiog4pyFIENvcmUgbWVjaGFuaXNtIMSRw6MgdGVzdCB0aMOgbmggY8O0bmcgdHLDqm4gdmlkZW8gdGjhuq10CioqSW1wbGVtZW50YXRpb246Kiog4pyFIFBoYXNlIDEtMyBob8OgbiB0aMOgbmgsIMSRw6MgcHVzaCBsw6puIEdpdEh1YiBtYWluCgotLS0KCiMjIDEuIFbhuqVuIMSR4buBIChQcm9ibGVtKQoKUGlwZWxpbmUgVjEgZG93bmxvYWQgdG/DoG4gYuG7mSB2aWRlbyDhu58gNDgwcC83MjBwIHRyxrDhu5tjIGtoaSBjaOG7pXAgZnJhbWU6Cgp8IFZpZGVvIHwgRHVuZyBsxrDhu6NuZyA3MjBwIHwgVGjhu51pIGdpYW4gZG93bmxvYWQgKGLhu4sgdGhyb3R0bGUpIHwKfC0tLS0tLS18LS0tLS0tLS0tLS0tLS0tLXwtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tfAp8IDMwIHBow7p0IHwgfjMwME1CIHwgMTAtMjAgcGjDunQgfAp8IDMgZ2nhu50gfCB+MS4yR0IgfCAxLTIgZ2nhu50gfAp8IDEyIGdp4budIChDUzUwIEFJKSB8IH4yR0IgfCAyLTQgZ2nhu50gfAoKVHJvbmcga2hpIMSRw7MsIFBERiBjdeG7kWkgY8O5bmcgY2jhu4kgY+G6p24gKip+MTAwLTUwMCBmcmFtZSoqIChzYXUgc2NlbmUgY29tcGFjdGluZykuCjkwJSsgZHVuZyBsxrDhu6NuZyBkb3dubG9hZCBsw6AgbMOjbmcgcGjDrS4KCiMjIDIuIMOdIHTGsOG7n25nIGPhu5F0IGzDtWkKCioqVMOhY2ggdmlkZW8gZMO5bmcgxJHhu4MgcGjDom4gdMOtY2gga2jhu49pIHZpZGVvIGTDuW5nIMSR4buDIHh14bqldCDhuqNuaDoqKgoKMS4gRG93bmxvYWQgYuG6o24gKioyNDBwKiogKH4xMCUgZHVuZyBsxrDhu6NuZykgxJHhu4MgcGjDoXQgaGnhu4duIHNjZW5lLgoyLiBQaMOhdCBoaeG7h24gc2NlbmUgY2hhbmdlIGLhurFuZyBGRm1wZWcgdHLDqm4gYuG6o24gcHJveHkuCjMuIENo4buJIGRvd25sb2FkIG5o4buvbmcgKirEkW/huqFuIG5n4bqvbioqIGNo4bupYSBzY2VuZSBxdWFuIHRy4buNbmcg4bufICoqMTA4MHAqKi4KNC4gVHLDrWNoIGZyYW1lIGNo4bqldCBsxrDhu6NuZyBjYW8gdOG7qyBjw6FjIMSRb+G6oW4gxJHDsy4KCiMjIDMuIEvhur90IHF14bqjIHZhbGlkYXRlICgyMDI2LTEwLTE1KQoKVGVzdCB0csOqbiB2aWRlbyB0aOG6rXQgKGBuTEgxbE5TOXFENGAsIDMwIHBow7p0KToKCmBgYHNoCnl0LWRscCAtZiAiYnYqW2hlaWdodDw9NzIwXSIgXAogIC0tZG93bmxvYWQtc2VjdGlvbnMgIio2MC02NSIgXAogIC0tZm9yY2Uta2V5ZnJhbWVzLWF0LWN1dHMgXAogIC1vICJzZWN0aW9uLXRlc3QuJShleHQpcyIgXAogICJodHRwczovL3d3dy55b3V0dWJlLmNvbS93YXRjaD92PW5MSDFsTlM5cUQ0IgpgYGAKCnwgTWV0cmljIHwgS+G6v3QgcXXhuqMgfAp8LS0tLS0tLS18LS0tLS0tLS0tfAp8IER1bmcgbMaw4bujbmcgdOG6o2kgfCAqKjM1OUtCKiogKGNobyDEkW/huqFuIDUgZ2nDonkpIHwKfCBUaOG7nWkgZ2lhbiB8IDE0cyAoYuG7iyB0aHJvdHRsZSBuaMawbmcgdGjDoG5oIGPDtG5nKSB8CnwgRnJhbWUgdHLDrWNoIHh14bqldCB8IDEyODDDlzcyMCwgY2jhuqV0IGzGsOG7o25nIHThu5F0IHwKfCBL4bq/dCBsdeG6rW4gfCDinIUgYC0tZG93bmxvYWQtc2VjdGlvbnNgICoqdGjhuq10IHPhu7EgdGnhur90IGtp4buHbSBiYW5kd2lkdGgqKiB8CgojIyA0LiBLaeG6v24gdHLDumMgxJHhu4EgeHXhuqV0CgpgYGAK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiAxLiBQUk9YWSAgICDilIIgIHl0LWRscCAtZiAiYnYqW2hlaWdodDw9MjQwXSIg4oaSIHByb3h5Lm1wNCAofjUwLTIwME1CKQrilIIgICBET1dOTE9BRCAg4pSCCuKUlOKUgOKUgOKUgOKUgOKUgOKUgOKUrOKUgOKUgOKUgOKUgOKUgOKUgOKUmAogICAgICAg4pSCCuKUjOKUgOKUgOKUgOKUgOKUgOKUgOKWvOKUgOKUgOKUgOKUgOKUgOKUgOKUkArilIIgMi4gU0NFTkUgICAg4pSCICBmZm1wZWcgLXZmICJzZWxlY3Q9J2d0KHNjZW5lLDAuMzApJyxzaG93aW5mbyIg4oaSIHNjZW5lcy5qc29uCuKUgiAgIERFVEVDVElPTiDilIIgICsgcGVyaW9kaWMgc2FtcGxpbmcgbeG7l2kgNXMgKGLhuq90IHNsaWRlIHRoYXkgxJHhu5VpIHThu6sgdOG7qykK4pSU4pSA4pSA4pSA4pSA4pSA4pSA4pSs4pSA4pSA4pSA4pSA4pSA4pSA4pSYCiAgICAgICDilIIK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pa84pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiAzLiBTRUdNRU5UICDilIIgIEfhu5lwIHRpbWVzdGFtcCBn4bqnbiBuaGF1IHRow6BuaCBraG/huqNuZyAodsOtIGThu6U6IDEwLTE4cywgOTMtMTAwcykK4pSCICAgUExBTk5JTkcgIOKUgiAg4oaSIHNlZ21lbnRzLmpzb24K4pSU4pSA4pSA4pSA4pSA4pSA4pSA4pSs4pSA4pSA4pSA4pSA4pSA4pSA4pSYCiAgICAgICDilIIK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pa84pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiA0LiBISUdILVJFUyDilIIgIHl0LWRscCAtLWRvd25sb2FkLXNlY3Rpb25zIChzb25nIHNvbmcsIC0tam9icyBOKQrilIIgICBET1dOTE9BRCAg4pSCICDihpIgc2VnbWVudHMvc2VnXzAwMS5tcDQsIHNlZ18wMDIubXA0LCAuLi4K4pSU4pSA4pSA4pSA4pSA4pSA4pSA4pSs4pSA4pSA4pSA4pSA4pSA4pSA4pSYCiAgICAgICDilIIK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pa84pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiA1LiBGUkFNRSAgICDilIIgIGZmbXBlZyAtc3MgPG9mZnNldD4gLWkgc2VnLm1wNCAtZnJhbWVzOnYgMSDihpIgZnJhbWVzLwrilIIgICBFWFRSQUNUSU9O4pSCICAoc29uZyBzb25nLCByZXN1bWFibGUgbmjGsCBWMSkK4pSU4pSA4pSA4pSA4pSA4pSA4pSA4pSs4pSA4pSA4pSA4pSA4pSA4pSA4pSYCiAgICAgICDilIIK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pa84pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiA2LiBDQVBUSU9OICDilIIgIE1hcCBt4buXaSBjYXB0aW9uIHNlZ21lbnQg4oaSIHNjZW5lIGZyYW1lIGfhuqduIG5o4bqldArilIIgICBNQVBQSU5HICAg4pSCICAoZMO5bmcgdGltZXN0YW1wLCBraMO0bmcgY+G6p24gZEhhc2gg4bufIGLGsOG7m2MgbsOgeSkK4pSU4pSA4pSA4pSA4pSA4pSA4pSA4pSs4pSA4pSA4pSA4pSA4pSA4pSA4pSYCiAgICAgICDilIIK4pSM4pSA4pSA4pSA4pSA4pSA4pSA4pa84pSA4pSA4pSA4pSA4pSA4pSA4pSQCuKUgiA3LiBQREYgICAgICDilIIgIFJldXNlIHBpcGVsaW5lIFYxOiBzY2VuZSBjb21wYWN0aW5nICsgUERGIGdlbmVyYXRpb24K4pSCICAgR0VORVJBVElPTuKUggrilJTilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilJgKYGBgCgojIyA1LiBRdXnhur90IMSR4buLbmggdGhp4bq/dCBr4bq/IGNow61uaAoKIyMjIDUuMS4gVjIgbMOgIG1vZGUgcmnDqm5nLCBraMO0bmcgdGhheSB0aOG6vyBWMQoKLSBUaMOqbSBmbGFnIGAtLXYyYCAoaG/hurdjIGAtLXNtYXJ0LWZyYW1lc2ApLgotIFYxIChkb3dubG9hZCBmdWxsICsgY2FwdGlvbi1kcml2ZW4pIHbhuqtuIGzDoCBkZWZhdWx0IOKAlCDEkcahbiBnaeG6o24sIMSRw6FuZyB0aW4gY+G6rXkuCi0gVjIgZMO5bmcgY2hvIHZpZGVvIGTDoGkgKD4xaCkga2hpIGRvd25sb2FkIGzDoCBib3R0bGVuZWNrLgoKKipMw70gZG86KiogVjIgcGjhu6ljIHThuqFwIGjGoW4sIGPDsyBuaGnhu4F1IMSRaeG7g20gZmFpbHVyZSBoxqFuLiBLaMO0bmcgbsOqbiDDqXAgbeG7jWkgdXNlciBkw7luZy4KCiMjIyA1LjIuIFNjZW5lIGRldGVjdGlvbjoga+G6v3QgaOG7o3AgMiBjxqEgY2jhur8KCk5oxrAgVGjDoWkgxJHDoyBjaOG7iSByYSwgY2jhu4kgZMO5bmcgYHNjZW5lYCBzY29yZSBz4bq9IGLhu48gc8OzdDoKCnwgQ8ahIGNo4bq/IHwgQuG6r3QgxJHGsOG7o2MgfCBC4buPIHPDs3QgfAp8LS0tLS0tLS18LS0tLS0tLS0tLS18LS0tLS0tLS18CnwgYHNlbGVjdD0nZ3Qoc2NlbmUsMC4zMCknYCB8IEPhuq90IGPhuqNuaCDEkeG7mXQgbmfhu5l0LCBjaHV54buDbiBzbGlkZSB8IFNsaWRlIGhp4buHbiB04burIHThu6ssIHZp4bq/dCB0aMOqbSBjw7RuZyB0aOG7qWMgfAp8IFNhbXBsaW5nIG3hu5dpIDVzICsgc28gc8OhbmggZEhhc2ggfCBUaGF5IMSR4buVaSB04burIHThu6sgfCAodOG7kW4gdGjDqm0gY29tcHV0ZSkgfAoKKirEkOG7gSB4deG6pXQ6KiogY2jhuqF5IGPhuqMgaGFpLCBn4buZcCBr4bq/dCBxdeG6oywgZGVkdXBlIGLhurFuZyBkSGFzaCAodMOhaSBkw7luZyBjb2RlIFYxKS4KCk5nxrDhu6FuZyBraOG7n2kgxJHhuqd1OiBgc2NlbmUgPiAwLjMwYCwgc2FtcGxpbmcgNXMsIGRIYXNoIHRocmVzaG9sZCA2IChnaeG7kW5nIFYxKS4KCiMjIyA1LjMuIENhcHRpb24g4oaSIFNjZW5lIG1hcHBpbmcKClBERiBj4bunYSB5dGIycGRmIMSRxrDhu6NjIHThu5UgY2jhu6ljIHRoZW8gKipjYXB0aW9uKiogKG3hu5dpIHRyYW5nID0gxJFv4bqhbiB2xINuICsg4bqjbmgpLgpWMiBjaOG7pXAgZnJhbWUgdGhlbyAqKnNjZW5lKiosIG7Dqm4gY+G6p24gbWFwOgoKYGBgCmNhcHRpb25fc2VnbWVudCAodD0xMjMuNXMpIOKGkiBuZWFyZXN0IHNjZW5lIGZyYW1lICh0PTEyMC4wcyBob+G6t2MgMTI1LjBzKQpgYGAKClF1eSB04bqvYzogbOG6pXkgc2NlbmUgZnJhbWUgY8OzIHRpbWVzdGFtcCAqKuKJpCoqIGNhcHRpb24gdGltZXN0YW1wIHbDoCBn4bqnbiBuaOG6pXQuCk7hur91IGtow7RuZyBjw7MgKGNhcHRpb24g4bufIMSR4bqndSB2aWRlbyB0csaw4bubYyBzY2VuZSDEkeG6p3UgdGnDqm4pLCBkw7luZyBzY2VuZSDEkeG6p3UgdGnDqm4uCgpTYXUgbWFwcGluZywgdMOhaSBkw7luZyBsb2dpYyBzY2VuZSBjb21wYWN0aW5nIGPhu6dhIFYxIMSR4buDIGfhu5lwLgoKIyMjIDUuNC4gU2VnbWVudCBwbGFubmluZzogZ+G7mXAgxJHhu4MgZ2nhuqNtIHPhu5EgbOG6p24gZG93bmxvYWQKClRoYXkgdsOsIGfhu41pIGB5dC1kbHBgIDEwMCBs4bqnbiBjaG8gMTAwIHNjZW5lOgoKYGBgClNjZW5lIHRpbWVzdGFtcHM6IDEyLjUsIDE0LjIsIDE1LjgsIDk1LjgsIDk3LjEsIDIyMC40CiAgICAg4oaTIGfhu5lwIChraG/huqNuZyBjw6FjaCA8IDEwcykKU2VnbWVudHM6IFsxMC0xOF0sIFs5My0xMDBdLCBbMjE4LTIyM10KICAgICDihpMgMyBs4bqnbiBkb3dubG9hZApgYGAKCk3hu5dpIHNlZ21lbnQgZG93bmxvYWQgMSBs4bqnbiwgdHLDrWNoIG5oaeG7gXUgZnJhbWUgdOG7qyDEkcOzIGLhurFuZyBmZm1wZWcgc2VlayBsb2NhbAoobmhhbmgsIGtow7RuZyB04buRbiBiYW5kd2lkdGggdGjDqm0pLgoKIyMgNi4gUuG7p2kgcm8gJiBnaeG6o20gdGhp4buDdQoKfCBS4bunaSBybyB8IE3hu6ljIMSR4buZIHwgR2nhuqNtIHRoaeG7g3UgfAp8LS0tLS0tLS18LS0tLS0tLS18LS0tLS0tLS0tLS0tfAp8IGAtLWRvd25sb2FkLXNlY3Rpb25zYCBraMO0bmcgdGnhur90IGtp4buHbSBiYW5kd2lkdGggduG7m2kgbeG7mXQgc+G7kSBmb3JtYXQgfCBDYW8gfCDinIUgxJDDoyB2YWxpZGF0ZSDigJQgdGnhur90IGtp4buHbSB0aOG6rXQuIEZhbGxiYWNrIHbhu4EgVjEgbuG6v3Ugc2VnbWVudCA+IDUwJSB2aWRlbyB8CnwgVGltZXN0YW1wIGzhu4djaCBkbyBrZXlmcmFtZSB8IFRydW5nIGLDrG5oIHwgYC0tZm9yY2Uta2V5ZnJhbWVzLWF0LWN1dHNgICsgcGFkZGluZyAycyBt4buXaSDEkeG6p3UgfAp8IFZpZGVvIGtow7RuZyBjw7MgYuG6o24gMjQwcCB8IFRo4bqlcCB8IEZhbGxiYWNrOiBkw7luZyBi4bqjbiB0aOG6pXAgbmjhuqV0IGPDsyBz4bq1biwgaG/hurdjIHbhu4EgVjEgfAp8IFNjZW5lIGRldGVjdGlvbiBi4buPIHPDs3Qgc2xpZGUgcXVhbiB0cuG7jW5nIHwgVHJ1bmcgYsOsbmggfCBL4bq/dCBo4bujcCBwZXJpb2RpYyBzYW1wbGluZyAobeG7pWMgNS4yKSB8CnwgUXXDoSBuaGnhu4F1IHNlZ21lbnQg4oaSIG5oaeG7gXUgbOG6p24gZG93bmxvYWQgfCBUaOG6pXAgfCBTZWdtZW50IHBsYW5uZXIgZ+G7mXAgKG3hu6VjIDUuNCk7IGdp4bubaSBo4bqhbiAyMDAgc2VnbWVudCB8CnwgWW91VHViZSB0aHJvdHRsZSBt4buXaSBjb25uZWN0aW9uIHwgVHJ1bmcgYsOsbmggfCBEb3dubG9hZCBzZWdtZW50IHNvbmcgc29uZyAoYC0tam9ic2ApLCByZXRyeSBracOqbiBuaOG6q24gKMSRw6MgY8OzIOG7nyBWMSkgfAoKIyMgNy4gS+G6vyBob+G6oWNoIHRo4buxYyBoaeG7h24KCiMjIyBQaGFzZSAwOiBWYWxpZGF0ZSAo4pyFIERPTkUg4oCUIDIwMjYtMTAtMTUpCi0gW3hdIFRlc3QgYC0tZG93bmxvYWQtc2VjdGlvbnNgIHRp4bq/dCBraeG7h20gYmFuZHdpZHRoIHRo4bqtdAotIFt4XSBUZXN0IHRyw61jaCBmcmFtZSB04burIHNlZ21lbnQKCiMjIyBQaGFzZSAxOiBQcm94eSArIFNjZW5lIERldGVjdGlvbiAo4pyFIERPTkUg4oCUIDIwMjYtMTAtMTUpCi0gW3hdIE1vZHVsZSBgdjIvcHJveHkucnNgOiBkb3dubG9hZCAyNDBwCi0gW3hdIE1vZHVsZSBgdjIvc2NlbmUucnNgOiBmZm1wZWcgc2NlbmUgZGV0ZWN0aW9uICsgcGVyaW9kaWMgc2FtcGxpbmcKLSBbeF0gTW9kdWxlIGB2Mi9zZWdtZW50cy5yc2A6IGfhu5lwIHRpbWVzdGFtcCB0aMOgbmgga2hv4bqjbmcKLSBbeF0gTW9kdWxlIGB2Mi9oaV9yZXMucnNgOiBkb3dubG9hZCBzb25nIHNvbmcgY8OhYyBzZWdtZW50IOG7nyA3MjBwCi0gW3hdIE1vZHVsZSBgdjIvbWFwcGluZy5yc2A6IG1hcCBjYXB0aW9uIOKGkiBzY2VuZSBmcmFtZQotIFt4XSAxNyB1bml0IHRlc3RzICsgMSBpbnRlZ3JhdGlvbiB0ZXN0IHhhbmgKLSBbeF0gxJDDoyBwdXNoIDcgZmlsZXMgbMOqbiBHaXRIdWIgbWFpbiAoU0hBLXZlcmlmaWVkKQoKIyMjIFBoYXNlIDI6IFNlZ21lbnQgUGxhbm5pbmcgKyBIaWdoLXJlcyBEb3dubG9hZCAo4pyFIERPTkUg4oCUIDIwMjYtMTAtMTUpCi0gW3hdIERvd25sb2FkIHNvbmcgc29uZyBjw6FjIHNlZ21lbnQgKHBhcmFsbGVsLCByZXN1bWFibGUpCi0gW3hdIFTDoWkgZMO5bmcgbG9naWMgcmV0cnkvYmFja29mZiB04burIFYxCgojIyMgUGhhc2UgMzogRnJhbWUgRXh0cmFjdGlvbiArIENhcHRpb24gTWFwcGluZyAo4pyFIERPTkUg4oCUIDIwMjYtMTAtMTUpCi0gW3hdIE1vZHVsZSBgdjIvcGlwZWxpbmUucnNgOiBvcmNoZXN0cmF0b3IgOSBixrDhu5tjCi0gW3hdIFRyw61jaCBmcmFtZSB04burIHNlZ21lbnQgKHTDoWkgZMO5bmcgYGV4dHJhY3RfZnJhbWVgKQotIFt4XSBNYXAgY2FwdGlvbiDihpIgc2NlbmUgZnJhbWUgZ+G6p24gbmjhuqV0Ci0gW3hdIFTDrWNoIGjhu6NwIHbDoG8gQ0xJIHbhu5tpIGZsYWcgYC0tdjJgCi0gW3hdIMSQw6MgcHVzaCA1IGZpbGVzIGzDqm4gR2l0SHViIG1haW4gKFNIQS12ZXJpZmllZCkKCiMjIyBQaGFzZSA0OiBUZXN0aW5nICsgRG9jcyAo8J+UhCBJTiBQUk9HUkVTUyDigJQgMjAyNi0xMC0xNSkKLSBbeF0gVGVzdCB0csOqbiB2aWRlbyAzMCBwaMO6dCAoTm9iZWwgS2luaCB04bq/IDIwMjYpOiBWMiBjaOG6oXkgZW5kLXRvLWVuZCB0aMOgbmggY8O0bmcKLSBbeF0gU28gc8OhbmggVjEgdnMgVjIgKHhlbSBt4bulYyAxMCBiw6puIGTGsOG7m2kpCi0gWyBdIFRlc3QgdHLDqm4gdmlkZW8gM2grICjEkW8gYmFuZHdpZHRoIHRp4bq/dCBraeG7h20pIOKAlCBDUzUwIMSRYW5nIGNo4bqheSBWMSwgY2jGsGEgdGVzdCBWMgotIFsgXSBD4bqtcCBuaOG6rXQgQUdFTlRTLm1kICsgUkVBRE1FIHbhu5tpIGZsYWcgYC0tdjJgCgojIyA4LiBUacOqdSBjaMOtIHRow6BuaCBjw7RuZwoKVjIgxJHGsOG7o2MgY29pIGzDoCB0aMOgbmggY8O0bmcga2hpOgoKMS4gKipCYW5kd2lkdGg6KiogZG93bmxvYWQgPCAyMCUgc28gduG7m2kgVjEgY2hvIHZpZGVvIDFoKyAoxJFvIHRo4buxYyB04bq/KS4KMi4gKipDaOG6pXQgbMaw4bujbmcgZnJhbWU6Kioga2jDtG5nIHBow6JuIGJp4buHdCDEkcaw4bujYyBWMSB2cyBWMiBi4bqxbmcgbeG6r3QgdGjGsOG7nW5nLgozLiAqKlBERiBvdXRwdXQ6Kiogc+G7kSB0cmFuZyDCsTEwJSBzbyB24bubaSBWMSwgY8O5bmcgbuG7mWkgZHVuZyBjYXB0aW9uLgo0LiAqKlRo4budaSBnaWFuOioqIHThu5VuZyB0aOG7nWkgZ2lhbiBWMiA8IDcwJSBWMSBjaG8gdmlkZW8gM2grLgoKIyMjIEvhur90IHF14bqjIHRo4buxYyB04bq/ICh2aWRlbyBOb2JlbCAzMCBwaMO6dCwgMjAyNi0xMC0xNSkKCnwgTWV0cmljIHwgVjEgfCBWMiB8IMSQw6FuaCBnacOhIHwKfC0tLS0tLS0tfC0tLS18LS0tLXwtLS0tLS0tLS0tfAp8IERvd25sb2FkIHwgMTAxTUIgKGZ1bGwgNzIwcCkgfCA3Nk1CICgxNU1CIHByb3h5ICsgNTRNQiBzZWdtZW50cykgfCDimqDvuI8gVGnhur90IGtp4buHbSAyNSUgKGNoxrBhIMSR4bqhdCAyMCUgdGFyZ2V0KSB8CnwgU2NlbmUgcGjDoXQgaGnhu4duIHwgMTEwIChjYXB0aW9uLWJhc2VkKSB8IDk0ICh2aXN1YWwtYmFzZWQpIHwg4pyFIFTGsMahbmcgxJHGsMahbmcgfAp8IFBERiB8IDEwNE1CLCAxMTAgdHJhbmcgfCA4ME1CLCA4NSB0cmFuZyB8IOKaoO+4jyDDjXQgaMahbiAyMyUgKHbGsOG7o3QgwrExMCUpIHwKfCBDaOG6pXQgbMaw4bujbmcgZnJhbWUgfCA3MjBwIHwgNzIwcCB8IOKchSBLaMO0bmcgcGjDom4gYmnhu4d0IMSRxrDhu6NjIHwKCioqTmjhuq1uIHjDqXQ6KiogVmlkZW8gMzAgcGjDunQgduG7m2kgOTQgc2NlbmUgZMOgeSDEkeG6t2MgdGjDrCBWMiBjaOG7iSB0aeG6v3Qga2nhu4dtIDI1JS4KVjIgdGjhu7FjIHPhu7EgdOG7j2Egc8OhbmcgduG7m2kgdmlkZW8gRMOASSB2w6Agw41UIHNjZW5lIChuaMawIENTNTAgMTIgdGnhur9uZykg4oCUIMaw4bubYyB0w61uaCB0aeG6v3Qga2nhu4dtIDYwLTcwJS4KQ+G6p24gdGVzdCB0aMOqbSB0csOqbiB2aWRlbyAzaCsgxJHhu4MgeMOhYyBuaOG6rW4uCgojIyAxMC4gQnVncyBwaMOhdCBoaeG7h24gJiBmaXhlcyAoMjAyNi0xMC0xNSkKCiMjIyBCdWcgMTogU2FtcGxpbmcgcXXDoSBkw6B5IOKGkiBn4buZcCB0aMOgbmggMSBzZWdtZW50Ci0gKipUcmnhu4d1IGNo4bupbmc6KiogU2FtcGxpbmcgbeG7l2kgNXMgdOG6oW8gMzc5ICJzY2VuZSIsIHThuqV0IGPhuqMgZ+G7mXAgdGjDoG5oIDEgc2VnbWVudCBkdXkgbmjhuqV0ICg9IGRvd25sb2FkIGZ1bGwgdmlkZW8pLgotICoqRml4OioqIFNhbXBsaW5nIHRoxrBhIHJhIDMwcywgY2jhu4kgbOG6pXAga2hv4bqjbmcgdHLhu5FuZyA+MTVzIGtow7RuZyBjw7Mgc2NlbmUgbsOgby4KLSAqKkvhur90IHF14bqjOioqIDk0IHNjZW5lIOKGkiA1OCBzZWdtZW50ICjEkcO6bmcgdGhp4bq/dCBr4bq/KS4KCiMjIyBCdWcgMjogU2VnbWVudCBi4buLIGPhuq90IG5n4bqvbiDhu58gY3Xhu5FpCi0gKipUcmnhu4d1IGNo4bupbmc6KiogYC0tZG93bmxvYWQtc2VjdGlvbnNgIHThuqFvIGZpbGUgY8OzIG1ldGFkYXRhIGR1cmF0aW9uIDE3ODVzIG5oxrBuZyBkYXRhIHRo4buxYyBjaOG7iSB+MTcwMHMuIFNjZW5lIOG7nyAxNzEwcyBraMO0bmcgdHLDrWNoIMSRxrDhu6NjIGZyYW1lIOKGkiBj4bqjIHBpcGVsaW5lIGZhaWwuCi0gKipGaXg6KiogQuG7jyBxdWEgc2NlbmUga2jDtG5nIHRyw61jaCDEkcaw4bujYyBmcmFtZSAod2FybmluZykgdGhheSB2w6wgZmFpbCBj4bqjIHBpcGVsaW5lLiDDgXAgZOG7pW5nIGNobyBj4bqjIFYxIChgZnJhbWVzLnJzYCkgdsOgIFYyIChgdjIvcGlwZWxpbmUucnNgKS4KCiMjIyBCdWcgMzogT09NIGtoaSBk4buxbmcgUERGIDcsNjI4IHRyYW5nCi0gKipUcmnhu4d1IGNo4bupbmc6KiogZ2VucGRmIGdp4buvIHThuqV0IGPhuqMg4bqjbmggdHJvbmcgUkFNIOKGkiBwcm9jZXNzIGLhu4sga2lsbCAoRVhJVDoxMzcpIOG7nyBixrDhu5tjIGThu7FuZyBQREYgY2hvIHZpZGVvIENTNTAgMTIgdGnhur9uZy4KLSAqKkZpeDoqKiBDaGlhIGJsb2NrcyB0aMOgbmggY2h1bmsgMSw1MDAgdHJhbmcsIGJ1aWxkIHThu6tuZyBjaHVuayByacOqbmcsIGfhu5lwIGLhurFuZyBgcGRmdW5pdGVgIChwb3BwbGVyLXV0aWxzKS4KLSAqKkvhur90IHF14bqjOioqIENTNTAgUERGIDEuOUdCLCA3LDYyOCB0cmFuZyBob8OgbiB0aMOgbmggdGjDoG5oIGPDtG5nLgoKIyMgMTEuIEJvbnVzOiBgLS10ZXh0LW9ubHlgIG1vZGUgKDIwMjYtMTAtMTUpCgpQaMOhdCBzaW5oIHThu6sgbmh1IGPhuqd1IHRo4buxYyB04bq/OiBQREYgMS45R0IgcXXDoSBs4bubbiDEkeG7gyB4ZW0gdHLDqm4gxJFp4buHbiB0aG/huqFpLgoKLSBGbGFnIGAtLXRleHQtb25seWA6IGLhu48gcXVhIGRvd25sb2FkIHZpZGVvLCBi4buPIHF1YSBjaOG7pXAgZnJhbWUsIGNo4buJIGdp4buvIGNhcHRpb24uCi0gS+G6v3QgcXXhuqM6IENTNTAgdGV4dC1vbmx5IFBERiAqKjUxTUIqKiAodGhheSB2w6wgMS45R0IpLCAxNCwyOTUgdHJhbmcg4oCUIG5o4bq5IGjGoW4gMzcgbOG6p24uCi0gUGjDuSBo4bujcCDEkeG7jWMgdHLDqm4gbW9iaWxlLCB24bqrbiBjw7MgbGluayBZb3VUdWJlIOG7nyBmb290ZXIuCgojIyA5LiBDw6J1IGjhu49pIG3hu58KCjEuICoqQ8OzIG7Dqm4gw6FwIGThu6VuZyBWMiBjaG8gYXBwIEdVSSBraMO0bmc/KiogSGF5IGNo4buJIENMSS9hZ2VudD8gKMSQ4buBIHh14bqldDogY2jhu4kgQ0xJIHRyxrDhu5tjKQoyLiAqKk5nxrDhu6FuZyBzY2VuZSBkZXRlY3Rpb24gdOG7kWkgxrB1IGNobyB04burbmcgbG/huqFpIHZpZGVvPyoqIChD4bqnbiB0dW5lIHRo4buxYyB04bq/OiBiw6BpIGdp4bqjbmcgdnMgdmxvZyB2cyBwaGltKQozLiAqKkPDsyBuw6puIGNhY2hlIHByb3h5Lm1wNCBnaeG7r2EgY8OhYyBs4bqnbiBjaOG6oXk/KiogKFRp4bq/dCBraeG7h20gbuG6v3UgdXNlciBjaOG6oXkgbOG6oWkgduG7m2kgY2FwdGlvbiBraMOhYykKCi0tLQoKIyMgUGjhu6UgbOG7pWM6IE1vZHVsZSBzdHJ1Y3R1cmUgxJHhu4EgeHXhuqV0CgpgYGAKY3JhdGVzL3l0YjJwZGYtY29yZS9zcmMvCuKUnOKUgOKUgCB2Mi8K4pSCICAg4pSc4pSA4pSAIG1vZC5ycyAgICAgICAgICAgIyBWMiBwaXBlbGluZSBvcmNoZXN0cmF0b3IK4pSCICAg4pSc4pSA4pSAIHByb3h5LnJzICAgICAgICAgIyAyNDBwIGRvd25sb2FkCuKUgiAgIOKUnOKUgOKUgCBzY2VuZS5ycyAgICAgICAgICMgU2NlbmUgZGV0ZWN0aW9uIChmZm1wZWcgKyBzYW1wbGluZykK4pSCICAg4pSc4pSA4pSAIHNlZ21lbnRzLnJzICAgICAgIyBTZWdtZW50IHBsYW5uaW5nIChtZXJnZSB0aW1lc3RhbXBzKQrilIIgICDilJzilIDilIAgaGlfcmVzLnJzICAgICAgICAjIEhpZ2gtcmVzIHNlZ21lbnQgZG93bmxvYWQK4pSCICAg4pSU4pSA4pSAIG1hcHBpbmcucnMgICAgICAgIyBDYXB0aW9uIOKGkiBzY2VuZSBmcmFtZSBtYXBwaW5nCmBgYAoKSG/hurdjIMSRxqFuIGdp4bqjbiBoxqFuOiB0aMOqbSB2w6BvIG1vZHVsZSBoaeG7h24gY8OzIChgeW91dHViZS5yc2AsIGBmcmFtZXMucnNgKQp24bubaSBwcmVmaXggYHYyX2AuIFF1eeG6v3QgxJHhu4tuaCBraGkgaW1wbGVtZW50IFBoYXNlIDEuCg==
+# Architecture V2 Plan — Low-res Detection, High-res Extraction
+
+**Status:** ✅ Implemented & Tested (2026-10-15)
+**Author:** Daisy (với input kiến trúc từ Thái)
+**Validation:** ✅ Core mechanism đã test thành công trên video thật
+**Implementation:** ✅ Phase 1-3 hoàn thành, đã push lên GitHub main
+
+---
+
+## 1. Vấn đề (Problem)
+
+Pipeline V1 download toàn bộ video ở 480p/720p trước khi chụp frame:
+
+| Video | Dung lượng 720p | Thời gian download (bị throttle) |
+|-------|----------------|----------------------------------|
+| 30 phút | ~300MB | 10-20 phút |
+| 3 giờ | ~1.2GB | 1-2 giờ |
+| 12 giờ (CS50 AI) | ~2GB | 2-4 giờ |
+
+Trong khi đó, PDF cuối cùng chỉ cần **~100-500 frame** (sau scene compacting).
+90%+ dung lượng download là lãng phí.
+
+## 2. Ý tưởng cốt lõi
+
+**Tách video dùng để phân tích khỏi video dùng để xuất ảnh:**
+
+1. Download bản **240p** (~10% dung lượng) để phát hiện scene.
+2. Phát hiện scene change bằng FFmpeg trên bản proxy.
+3. Chỉ download những **đoạn ngắn** chứa scene quan trọng ở **1080p**.
+4. Trích frame chất lượng cao từ các đoạn đó.
+
+## 3. Kết quả validate (2026-10-15)
+
+Test trên video thật (`nLH1lNS9qD4`, 30 phút):
+
+```sh
+yt-dlp -f "bv*[height<=720]" \
+  --download-sections "*60-65" \
+  --force-keyframes-at-cuts \
+  -o "section-test.%(ext)s" \
+  "https://www.youtube.com/watch?v=nLH1lNS9qD4"
+```
+
+| Metric | Kết quả |
+|--------|---------|
+| Dung lượng tải | **359KB** (cho đoạn 5 giây) |
+| Thời gian | 14s (bị throttle nhưng thành công) |
+| Frame trích xuất | 1280×720, chất lượng tốt |
+| Kết luận | ✅ `--download-sections` **thật sự tiết kiệm bandwidth** |
+
+## 4. Kiến trúc đề xuất
+
+```
+┌─────────────┐
+│ 1. PROXY    │  yt-dlp -f "bv*[height<=240]" → proxy.mp4 (~50-200MB)
+│   DOWNLOAD  │
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 2. SCENE    │  ffmpeg -vf "select='gt(scene,0.30)',showinfo" → scenes.json
+│   DETECTION │  + periodic sampling mỗi 5s (bắt slide thay đổi từ từ)
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 3. SEGMENT  │  Gộp timestamp gần nhau thành khoảng (ví dụ: 10-18s, 93-100s)
+│   PLANNING  │  → segments.json
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 4. HIGH-RES │  yt-dlp --download-sections (song song, --jobs N)
+│   DOWNLOAD  │  → segments/seg_001.mp4, seg_002.mp4, ...
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 5. FRAME    │  ffmpeg -ss <offset> -i seg.mp4 -frames:v 1 → frames/
+│   EXTRACTION│  (song song, resumable như V1)
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 6. CAPTION  │  Map mỗi caption segment → scene frame gần nhất
+│   MAPPING   │  (dùng timestamp, không cần dHash ở bước này)
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ 7. PDF      │  Reuse pipeline V1: scene compacting + PDF generation
+│   GENERATION│
+└─────────────┘
+```
+
+## 5. Quyết định thiết kế chính
+
+### 5.1. V2 là mode riêng, không thay thế V1
+
+- Thêm flag `--v2` (hoặc `--smart-frames`).
+- V1 (download full + caption-driven) vẫn là default — đơn giản, đáng tin cậy.
+- V2 dùng cho video dài (>1h) khi download là bottleneck.
+
+**Lý do:** V2 phức tạp hơn, có nhiều điểm failure hơn. Không nên ép mọi user dùng.
+
+### 5.2. Scene detection: kết hợp 2 cơ chế
+
+Như Thái đã chỉ ra, chỉ dùng `scene` score sẽ bỏ sót:
+
+| Cơ chế | Bắt được | Bỏ sót |
+|--------|-----------|--------|
+| `select='gt(scene,0.30)'` | Cắt cảnh đột ngột, chuyển slide | Slide hiện từ từ, viết thêm công thức |
+| Sampling mỗi 5s + so sánh dHash | Thay đổi từ từ | (tốn thêm compute) |
+
+**Đề xuất:** chạy cả hai, gộp kết quả, dedupe bằng dHash (tái dùng code V1).
+
+Ngưỡng khởi đầu: `scene > 0.30`, sampling 5s, dHash threshold 6 (giống V1).
+
+### 5.3. Caption → Scene mapping
+
+PDF của ytb2pdf được tổ chức theo **caption** (mỗi trang = đoạn văn + ảnh).
+V2 chụp frame theo **scene**, nên cần map:
+
+```
+caption_segment (t=123.5s) → nearest scene frame (t=120.0s hoặc 125.0s)
+```
+
+Quy tắc: lấy scene frame có timestamp **≤** caption timestamp và gần nhất.
+Nếu không có (caption ở đầu video trước scene đầu tiên), dùng scene đầu tiên.
+
+Sau mapping, tái dùng logic scene compacting của V1 để gộp.
+
+### 5.4. Segment planning: gộp để giảm số lần download
+
+Thay vì gọi `yt-dlp` 100 lần cho 100 scene:
+
+```
+Scene timestamps: 12.5, 14.2, 15.8, 95.8, 97.1, 220.4
+     ↓ gộp (khoảng cách < 10s)
+Segments: [10-18], [93-100], [218-223]
+     ↓ 3 lần download
+```
+
+Mỗi segment download 1 lần, trích nhiều frame từ đó bằng ffmpeg seek local
+(nhanh, không tốn bandwidth thêm).
+
+## 6. Rủi ro & giảm thiểu
+
+| Rủi ro | Mức độ | Giảm thiểu |
+|--------|--------|------------|
+| `--download-sections` không tiết kiệm bandwidth với một số format | Cao | ✅ Đã validate — tiết kiệm thật. Fallback về V1 nếu segment > 50% video |
+| Timestamp lệch do keyframe | Trung bình | `--force-keyframes-at-cuts` + padding 2s mỗi đầu |
+| Video không có bản 240p | Thấp | Fallback: dùng bản thấp nhất có sẵn, hoặc về V1 |
+| Scene detection bỏ sót slide quan trọng | Trung bình | Kết hợp periodic sampling (mục 5.2) |
+| Quá nhiều segment → nhiều lần download | Thấp | Segment planner gộp (mục 5.4); giới hạn 200 segment |
+| YouTube throttle mỗi connection | Trung bình | Download segment song song (`--jobs`), retry kiên nhẫn (đã có ở V1) |
+
+## 7. Kế hoạch thực hiện
+
+### Phase 0: Validate (✅ DONE — 2026-10-15)
+- [x] Test `--download-sections` tiết kiệm bandwidth thật
+- [x] Test trích frame từ segment
+
+### Phase 1: Proxy + Scene Detection (✅ DONE — 2026-10-15)
+- [x] Module `v2/proxy.rs`: download 240p
+- [x] Module `v2/scene.rs`: ffmpeg scene detection + periodic sampling
+- [x] Module `v2/segments.rs`: gộp timestamp thành khoảng
+- [x] Module `v2/hi_res.rs`: download song song các segment ở 720p
+- [x] Module `v2/mapping.rs`: map caption → scene frame
+- [x] 17 unit tests + 1 integration test xanh
+- [x] Đã push 7 files lên GitHub main (SHA-verified)
+
+### Phase 2: Segment Planning + High-res Download (✅ DONE — 2026-10-15)
+- [x] Download song song các segment (parallel, resumable)
+- [x] Tái dùng logic retry/backoff từ V1
+
+### Phase 3: Frame Extraction + Caption Mapping (✅ DONE — 2026-10-15)
+- [x] Module `v2/pipeline.rs`: orchestrator 9 bước
+- [x] Trích frame từ segment (tái dùng `extract_frame`)
+- [x] Map caption → scene frame gần nhất
+- [x] Tích hợp vào CLI với flag `--v2`
+- [x] Đã push 5 files lên GitHub main (SHA-verified)
+
+### Phase 4: Testing + Docs (🔄 IN PROGRESS — 2026-10-15)
+- [x] Test trên video 30 phút (Nobel Kinh tế 2026): V2 chạy end-to-end thành công
+- [x] So sánh V1 vs V2 (xem mục 10 bên dưới)
+- [ ] Test trên video 3h+ (đo bandwidth tiết kiệm) — CS50 đang chạy V1, chưa test V2
+- [ ] Cập nhật AGENTS.md + README với flag `--v2`
+
+## 8. Tiêu chí thành công
+
+V2 được coi là thành công khi:
+
+1. **Bandwidth:** download < 20% so với V1 cho video 1h+ (đo thực tế).
+2. **Chất lượng frame:** không phân biệt được V1 vs V2 bằng mắt thường.
+3. **PDF output:** số trang ±10% so với V1, cùng nội dung caption.
+4. **Thời gian:** tổng thời gian V2 < 70% V1 cho video 3h+.
+
+### Kết quả thực tế (video Nobel 30 phút, 2026-10-15)
+
+| Metric | V1 | V2 | Đánh giá |
+|--------|----|----|----------|
+| Download | 101MB (full 720p) | 76MB (15MB proxy + 54MB segments) | ⚠️ Tiết kiệm 25% (chưa đạt 20% target) |
+| Scene phát hiện | 110 (caption-based) | 94 (visual-based) | ✅ Tương đương |
+| PDF | 104MB, 110 trang | 80MB, 85 trang | ⚠️ Ít hơn 23% (vượt ±10%) |
+| Chất lượng frame | 720p | 720p | ✅ Không phân biệt được |
+
+**Nhận xét:** Video 30 phút với 94 scene dày đặc thì V2 chỉ tiết kiệm 25%.
+V2 thực sự tỏa sáng với video DÀI và ÍT scene (như CS50 12 tiếng) — ước tính tiết kiệm 60-70%.
+Cần test thêm trên video 3h+ để xác nhận.
+
+## 10. Bugs phát hiện & fixes (2026-10-15)
+
+### Bug 1: Sampling quá dày → gộp thành 1 segment
+- **Triệu chứng:** Sampling mỗi 5s tạo 379 "scene", tất cả gộp thành 1 segment duy nhất (= download full video).
+- **Fix:** Sampling thưa ra 30s, chỉ lấp khoảng trống >15s không có scene nào.
+- **Kết quả:** 94 scene → 58 segment (đúng thiết kế).
+
+### Bug 2: Segment bị cắt ngắn ở cuối
+- **Triệu chứng:** `--download-sections` tạo file có metadata duration 1785s nhưng data thực chỉ ~1700s. Scene ở 1710s không trích được frame → cả pipeline fail.
+- **Fix:** Bỏ qua scene không trích được frame (warning) thay vì fail cả pipeline. Áp dụng cho cả V1 (`frames.rs`) và V2 (`v2/pipeline.rs`).
+
+### Bug 3: OOM khi dựng PDF 7,628 trang
+- **Triệu chứng:** genpdf giữ tất cả ảnh trong RAM → process bị kill (EXIT:137) ở bước dựng PDF cho video CS50 12 tiếng.
+- **Fix:** Chia blocks thành chunk 1,500 trang, build từng chunk riêng, gộp bằng `pdfunite` (poppler-utils).
+- **Kết quả:** CS50 PDF 1.9GB, 7,628 trang hoàn thành thành công.
+
+## 11. Bonus: `--text-only` mode (2026-10-15)
+
+Phát sinh từ nhu cầu thực tế: PDF 1.9GB quá lớn để xem trên điện thoại.
+
+- Flag `--text-only`: bỏ qua download video, bỏ qua chụp frame, chỉ giữ caption.
+- Kết quả: CS50 text-only PDF **51MB** (thay vì 1.9GB), 14,295 trang — nhẹ hơn 37 lần.
+- Phù hợp đọc trên mobile, vẫn có link YouTube ở footer.
+
+## 9. Câu hỏi mở
+
+1. **Có nên áp dụng V2 cho app GUI không?** Hay chỉ CLI/agent? (Đề xuất: chỉ CLI trước)
+2. **Ngưỡng scene detection tối ưu cho từng loại video?** (Cần tune thực tế: bài giảng vs vlog vs phim)
+3. **Có nên cache proxy.mp4 giữa các lần chạy?** (Tiết kiệm nếu user chạy lại với caption khác)
+
+---
+
+## Phụ lục: Module structure đề xuất
+
+```
+crates/ytb2pdf-core/src/
+├── v2/
+│   ├── mod.rs           # V2 pipeline orchestrator
+│   ├── proxy.rs         # 240p download
+│   ├── scene.rs         # Scene detection (ffmpeg + sampling)
+│   ├── segments.rs      # Segment planning (merge timestamps)
+│   ├── hi_res.rs        # High-res segment download
+│   └── mapping.rs       # Caption → scene frame mapping
+```
+
+Hoặc đơn giản hơn: thêm vào module hiện có (`youtube.rs`, `frames.rs`)
+với prefix `v2_`. Quyết định khi implement Phase 1.
