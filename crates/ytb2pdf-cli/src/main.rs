@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use ytb2pdf_core::{run_pipeline, v2, whisper::WhisperModel, PipelineConfig, PipelineEvent};
 
 fn usage() -> &'static str {
-    "usage: ytb2pdf <youtube-url> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>] [--v2]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
+    "usage: ytb2pdf <youtube-url|local-video-path> [--to <lang>] [--from <lang>] [--cookies <cookies.txt>] [--cookies-from-browser <name>] [--gemini-key <key>] [--whisper-model fast|medium] [--transcript <file.srt>]\n       [--work-dir <dir>] [--out <file.pdf>] [--json] [--quality <480|720|1080>] [--jobs <n>] [--v2]\n\n--json: emit one JSON object per line (stage/progress/log/done) for agent parsing.\n\nexamples:\n  ytb2pdf \"https://youtu.be/W25_BbZCZD0\" --to vi --cookies ~/Downloads/cookies.txt\n  ytb2pdf \"https://www.youtube.com/watch?v=abc\" --cookies-from-browser chrome --out out.pdf"
 }
 
 fn main() -> Result<()> {
@@ -22,7 +22,12 @@ fn main() -> Result<()> {
         std::process::exit(2);
     }
     let mut cfg = PipelineConfig::default();
-    cfg.url = args[1].clone();
+    let input = ytb2pdf_core::VideoInput::parse_cli(&args[1])?;
+    input.validate()?;
+    match input {
+        ytb2pdf_core::VideoInput::YouTubeUrl(url) => cfg.url = url,
+        ytb2pdf_core::VideoInput::LocalFile(file) => cfg.local_file = Some(file),
+    }
     let mut json_out = false;
     let mut i = 2;
     while i < args.len() {
@@ -101,12 +106,14 @@ fn main() -> Result<()> {
     }
     if cfg.out_pdf.as_os_str() == "output.pdf" {
         // default the filename from the video id when the user didn't choose
-        if let Ok(v) = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url) {
+        if let Some(file) = &cfg.local_file {
+            cfg.out_pdf = PathBuf::from(format!("{}.pdf", file.file_stem().unwrap_or_default().to_string_lossy()));
+        } else if let Ok(v) = ytb2pdf_core::youtube::parse_youtube_url(&cfg.url) {
             cfg.out_pdf = PathBuf::from(format!("{}.pdf", v.id));
         }
     }
 
-    if cfg.v2 {
+    if cfg.v2 && cfg.local_file.is_none() {
         v2::pipeline::run_v2_pipeline(&cfg, &|ev| emit_event(ev, json_out))?;
     } else {
         run_pipeline(&cfg, &|ev| emit_event(ev, json_out))?;
