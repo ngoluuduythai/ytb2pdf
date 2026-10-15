@@ -6,7 +6,7 @@ ytb2pdf is an open-source Rust application that transforms long-form YouTube vid
 
 Instead of repeatedly scrubbing through a multi-hour video to find a diagram or explanation, you can review its visual content and accompanying text in a document.
 
-> **Project status:** Active development. The current focus is reliable video-to-PDF conversion. AI-powered summarization is a planned future capability, not a current feature.
+> **Project status (October 2026):** Active development. The original caption-driven V1 pipeline and an opt-in, scene-aware V2 pipeline are implemented. V2 has completed a 30-minute end-to-end test; longer-video performance validation is still pending. AI-powered summarization remains a future goal.
 
 ## Why ytb2pdf?
 
@@ -26,7 +26,9 @@ The goal is **not** to replace the original video. It is to make valuable video 
 
 - Convert YouTube videos into PDF documents.
 - Extract and normalize subtitles in SRT, VTT, and JSON3 formats.
-- Capture video frames aligned with subtitle timestamps.
+- Capture video frames aligned with subtitle timestamps in the default V1 pipeline.
+- Use **experimental V2 (`--v2`)** to detect scenes from a low-resolution proxy and download only selected higher-resolution video segments.
+- Fall back to local Whisper speech recognition when YouTube subtitles are unavailable in V1 (requires the `whisper-cli` executable/model).
 - Reduce redundant images using perceptual hashing (dHash).
 - Include timestamps, original captions, and optional translations.
 - Translate subtitles with Gemini when configured.
@@ -59,7 +61,33 @@ PDF generation
 Timestamped frames + captions + optional translations
 ```
 
-The current pipeline captures frames around subtitle timestamps and filters duplicates. More advanced scene-aware frame selection is planned.
+**V1 (default)** captures frames around subtitle timestamps and filters duplicates. **V2 (opt-in)** uses low-resolution scene detection, plans grouped high-resolution downloads, extracts scene frames, and maps captions to the resulting frames. V2 is implemented but remains under evaluation; its output can differ from V1. See [Architecture V2 Plan](docs/architecture-v2-plan.md) for the design, test data, and open work.
+
+### Architecture V2: bandwidth-aware frame extraction
+
+```text
+YouTube URL + captions
+         |
+         v
+Download low-resolution proxy (240p target)
+         |
+         v
+Detect visual changes (FFmpeg scene score + periodic sampling)
+         |
+         v
+Group scene timestamps into download segments
+         |
+         v
+Download selected higher-resolution segments in parallel
+         |
+         v
+Extract scene frames and map captions to frames
+         |
+         v
+Build illustrated, timestamped PDF
+```
+
+V2 is intended for long videos where downloading the entire source is expensive. It does **not** replace the simpler V1 default. The current V2 implementation skips subtitle translation, so use V1 when you need translated captions.
 
 ## Getting started
 
@@ -99,6 +127,14 @@ export GEMINI_API_KEY="your-api-key"
 cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --to vi
 ```
 
+### Try the V2 pipeline (CLI)
+
+```bash
+cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --v2 --out lecture-v2.pdf
+```
+
+Optional controls include `--quality 720`, `--jobs 4`, `--transcript path/to/file.srt`, and `--json` for machine-readable progress events. V2 currently requires captions (either downloaded or supplied with `--transcript`); unlike V1, it does not yet fall back to Whisper.
+
 ### Run the desktop app
 
 ```bash
@@ -119,6 +155,33 @@ cargo run -p ytb2pdf-cli -- "https://youtu.be/W25_BbZCZD0" --cookies-from-browse
 
 Only use accounts and videos you are authorized to access. Keep browser cookies, credentials, and API keys private.
 
+## V2 implementation status and measured results
+
+The [V2 implementation plan](docs/architecture-v2-plan.md) reports the following status as of **October 15, 2026**:
+
+| Workstream | Status |
+| --- | --- |
+| Validate selective downloading with `yt-dlp --download-sections` | Complete |
+| Low-resolution proxy, scene detection, and segment planning | Implemented |
+| Parallel higher-resolution segment downloads | Implemented |
+| Frame extraction, caption-to-scene mapping, and `--v2` CLI integration | Implemented |
+| End-to-end test on a 30-minute video | Completed |
+| Validation on videos longer than three hours | Pending |
+| Further tuning for output parity and bandwidth savings | Ongoing |
+
+**Reported 30-minute benchmark (not a general performance guarantee):**
+
+| Metric | V1 | V2 |
+| --- | --- | --- |
+| Downloaded data | 101 MB | 76 MB (about 25% less) |
+| Visual/caption-derived scenes | 110 | 94 |
+| PDF output | 104 MB / 110 pages | 80 MB / 85 pages |
+| Frame resolution | 720p | 720p |
+
+V2 produced **about 23% fewer pages**, exceeding the plan's target of staying within ±10% of V1. The goal of downloading under 20% of V1's data on videos longer than one hour **has not yet been validated**. Longer-video savings remain a hypothesis, not a measured result.
+
+The plan also documents robustness work: less frequent fallback sampling, skipping frames that cannot be extracted, and chunked PDF generation for very large documents. It reports a completed 7,628-page CS50 PDF and a much smaller text-only PDF experiment; however, **the current CLI does not expose a `--text-only` flag**, so it is not documented here as a runnable CLI option.
+
 ## Architecture
 
 ytb2pdf uses a Rust workspace with a reusable processing engine separated from its interfaces.
@@ -131,7 +194,9 @@ crates/
 │   ├── frames.rs       # FFmpeg frame extraction and dHash filtering
 │   ├── translate.rs    # Translator abstraction and Gemini implementation
 │   ├── pdf.rs          # PDF generation with genpdf
-│   └── pipeline.rs     # Pipeline orchestration and progress callbacks
+│   ├── pipeline.rs     # V1 pipeline orchestration and progress callbacks
+│   ├── whisper.rs      # Local speech-to-text fallback
+│   └── v2/             # Proxy, scene detection, segment planning, high-res extraction, mapping, pipeline
 ├── ytb2pdf-cli/        # Command-line interface
 └── ytb2pdf-app/        # Native desktop UI built with egui
 ```
@@ -149,8 +214,11 @@ The longer-term vision is to turn lengthy educational videos into **useful, sear
 
 ### Planned improvements
 
-- [ ] Scene-change detection and smarter selection of meaningful frames
-- [ ] Speech-to-text fallback for videos without subtitles
+- [x] Scene-aware V2 pipeline with low-resolution proxy and selective higher-resolution downloads (opt-in CLI)
+- [x] Speech-to-text fallback in V1 using Whisper
+- [ ] Validate V2 on 3+ hour videos and measure actual bandwidth/time savings
+- [ ] Improve V2 scene selection and V1/V2 PDF page-count parity
+- [ ] Bring V2 to the desktop app and evaluate V2 translation/Whisper support
 - [ ] Better bundled font support, including Vietnamese
 - [ ] macOS code signing and notarization
 - [ ] Improved application branding and packaging
@@ -201,7 +269,7 @@ Not sure where to start? Documentation improvements, small bug fixes, test cover
 
 ## Building for macOS
 
-A Linux build does not produce a native macOS executable. The project includes a macOS GitHub Actions workflow at [`.github/workflows/macos.yml`](.github/workflows/macos.yml) for building and packaging a `.dmg`.
+A Linux build does not produce a native macOS executable. The project includes a macOS GitHub Actions workflow at [`.github/workflows/macos.yml`](.github/workflows/macos.yml) for building and packaging an Apple Silicon (`arm64`) `.dmg`. Tagged builds (`v*`) publish to [GitHub Releases](https://github.com/ngoluuduythai/ytb2pdf/releases); manual workflow runs publish prereleases. Availability depends on successful workflow execution.
 
 Code signing and notarization remain planned improvements and require appropriate Apple Developer credentials.
 
