@@ -163,7 +163,7 @@ pub fn run_v2_pipeline(
             .map(|f| f.path.clone());
         blocks.push(PdfBlock {
             timestamp_secs: first.start,
-            deep_link: format!("https://youtu.be/{}?t={}s", video.id, first.start as u64),
+            deep_link: Some(format!("https://youtu.be/{}?t={}s", video.id, first.start as u64)),
             caption,
             caption_translated: None, // V2 skips translation for now
             image: image_path,
@@ -188,7 +188,7 @@ pub fn run_v2_pipeline(
         title: meta.title.clone(),
         uploader: meta.uploader.clone(),
         duration_secs: meta.duration_secs,
-        source_url: video.url.clone(),
+        source_url: Some(video.url.clone()),
     };
     pdf::build_pdf(&pdf_meta, &blocks, &PdfOptions::default(), &cfg.out_pdf)?;
     log(format!("PDF: {}", cfg.out_pdf.display()));
