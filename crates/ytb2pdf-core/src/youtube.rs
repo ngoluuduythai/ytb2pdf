@@ -67,6 +67,43 @@ fn is_player_challenge(stderr: &str) -> bool {
     stderr.contains("The page needs to be reloaded") || stderr.contains("Sign in to confirm you")
 }
 
+/// Find the subtitle file yt-dlp just wrote for one download attempt.
+///
+/// yt-dlp inserts the subtitle language into the filename: with the
+/// output template `<id>.auto.%(ext)s` and `--sub-langs vi` the file is
+/// `<id>.auto.vi.srt`, not `<id>.srt`. Prefer the exact requested
+/// language, then any subtitle file written for this attempt (yt-dlp
+/// may normalize the language code, e.g. `en-US`).
+fn find_subtitle_file(out_dir: &Path, out_tpl: &Path, lang: &str) -> Option<PathBuf> {
+    for ext in ["srt", "vtt"] {
+        let candidate = PathBuf::from(format!("{}.{}.{}", out_tpl.display(), lang, ext));
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    let stem = out_tpl.file_name()?.to_str()?;
+    let prefix = format!("{stem}.");
+    let mut matches: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(out_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with(&prefix)
+                    && (name.ends_with(".srt") || name.ends_with(".vtt"))
+                {
+                    matches.push(path);
+                }
+            }
+        }
+    }
+    matches.sort();
+    matches
+        .iter()
+        .find(|p| p.extension().and_then(|e| e.to_str()) == Some("srt"))
+        .or_else(|| matches.first())
+        .cloned()
+}
+
 /// Thin wrapper around the `yt-dlp` binary.
 #[derive(Debug, Clone, Default)]
 pub struct YtDlp {
@@ -241,13 +278,8 @@ impl YtDlp {
                 .arg(&video.url);
             match self.run(cmd, "downloading subtitles") {
                 Ok(_) => {
-                    let srt = out_tpl.with_extension("srt");
-                    if srt.exists() {
-                        return Ok(srt);
-                    }
-                    let vtt = out_tpl.with_extension("vtt");
-                    if vtt.exists() {
-                        return Ok(vtt);
+                    if let Some(found) = find_subtitle_file(out_dir, &out_tpl, lang) {
+                        return Ok(found);
                     }
                 }
                 Err(e) if auto => return Err(e),
@@ -345,5 +377,59 @@ mod tests {
             assert_eq!(parse_youtube_url(url).unwrap().id, id, "{url}");
         }
         assert!(parse_youtube_url("https://example.com/not-youtube").is_err());
+    }
+
+    fn subtitle_test_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("ytb2pdf-subs-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(dir: &Path, name: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, "1\n00:00:00,000 --> 00:00:01,000\nx\n").unwrap();
+        p
+    }
+
+    #[test]
+    fn finds_auto_subtitle_with_language_in_filename() {
+        // Regression: yt-dlp writes `<id>.auto.vi.srt`; the old lookup
+        // checked `<id>.srt` and missed it, falling back to Whisper.
+        let dir = subtitle_test_dir("auto-vi");
+        let expected = touch(&dir, "W25_BbZCZD0.auto.vi.srt");
+        let out_tpl = dir.join("W25_BbZCZD0.auto");
+        assert_eq!(find_subtitle_file(&dir, &out_tpl, "vi"), Some(expected));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prefers_exact_language_and_srt() {
+        let dir = subtitle_test_dir("prefer-exact");
+        touch(&dir, "W25_BbZCZD0.auto.en.srt");
+        touch(&dir, "W25_BbZCZD0.auto.vi.vtt");
+        let expected = touch(&dir, "W25_BbZCZD0.auto.vi.srt");
+        let out_tpl = dir.join("W25_BbZCZD0.auto");
+        assert_eq!(find_subtitle_file(&dir, &out_tpl, "vi"), Some(expected));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn falls_back_to_normalized_language_code() {
+        let dir = subtitle_test_dir("normalized-lang");
+        let expected = touch(&dir, "W25_BbZCZD0.auto.en-US.srt");
+        let out_tpl = dir.join("W25_BbZCZD0.auto");
+        assert_eq!(find_subtitle_file(&dir, &out_tpl, "en"), Some(expected));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn returns_none_without_matching_subtitle() {
+        let dir = subtitle_test_dir("no-match");
+        touch(&dir, "other-id.auto.vi.srt");
+        let out_tpl = dir.join("W25_BbZCZD0.auto");
+        assert_eq!(find_subtitle_file(&dir, &out_tpl, "vi"), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
